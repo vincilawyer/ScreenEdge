@@ -1,128 +1,134 @@
 import SwiftUI
 
-private func passageGradient(manual: Bool, vertical: Bool = false) -> LinearGradient {
-    let colors = PortalPalette.stops(manual: manual).map { Color(.sRGB, red: Double($0[0]), green: Double($0[1]), blue: Double($0[2]), opacity: 1) }
-    return LinearGradient(colors: colors, startPoint: vertical ? .top : .leading, endPoint: vertical ? .bottom : .trailing)
-}
+let settingsAccent = Color.accentColor
 
-private let mint = Color(red: 0.12, green: 0.64, blue: 0.51)
+enum SettingsPage: String, CaseIterable, Identifiable {
+    case appearance, styles, channels, markers, general
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .appearance: return "边缘显示"
+        case .styles: return "边缘样式"
+        case .channels: return "屏幕与通道"
+        case .markers: return "手动标记"
+        case .general: return "锁屏与启动"
+        }
+    }
+    var icon: String {
+        switch self {
+        case .appearance: return "cursorarrow"
+        case .styles: return "paintpalette"
+        case .channels: return "display.2"
+        case .markers: return "slider.horizontal.3"
+        case .general: return "lock"
+        }
+    }
+    var subtitle: String {
+        switch self {
+        case .appearance: return "选择边缘出现的时机。"
+        case .styles: return "调整线条粗细，为两类通道分别搭配颜色和透明度。"
+        case .channels: return "查看屏幕排列与可以跨越的通道。"
+        case .markers: return "为需要额外提示的位置补充标记。"
+        case .general: return "设置锁屏行为与应用启动方式。"
+        }
+    }
+}
 
 struct SettingsView: View {
     @ObservedObject var model: AppModel
+    @State private var page: SettingsPage
+
+    init(model: AppModel, initialPage: SettingsPage = .appearance) {
+        self.model = model
+        _page = State(initialValue: initialPage)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 14) {
-                Image(systemName: "rectangle.split.2x1")
-                    .font(.system(size: 28, weight: .medium)).foregroundStyle(mint)
-                    .frame(width: 54, height: 54).background(mint.opacity(0.10), in: RoundedRectangle(cornerRadius: 14))
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("跨屏边缘").font(.system(size: 23, weight: .semibold))
-                    Text("沿着渐变，找到跨屏的通道。").font(.system(size: 12)).foregroundStyle(.secondary)
-                }
-                Spacer()
-                Toggle("显示边缘", isOn: $model.preferences.enabled).toggleStyle(.switch)
-                    .accessibilityIdentifier("overlayEnabled")
-            }.padding(24)
+            header
             Divider()
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack {
-                            Text("屏幕与通道").font(.headline)
-                            Spacer()
-                            Text("\(model.displays.count) 块本机屏幕 · \(model.universalControlPortals.count) 处通用控制入口")
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
-                        DisplayMap(displays: model.displays, portals: model.portals)
-                            .frame(height: model.universalControlPortals.isEmpty ? 200 : 300)
-                            .background(Color.primary.opacity(0.025), in: RoundedRectangle(cornerRadius: 12))
-                        HStack(spacing: 18) {
-                            Label { Text("蓝绿渐变 · 扩展屏通道") } icon: { Capsule().fill(passageGradient(manual: false)).frame(width: 28, height: 5) }
-                            Label { Text("橙红渐变 · 通用控制通道") } icon: { Capsule().fill(passageGradient(manual: true)).frame(width: 28, height: 5) }
-                            Spacer()
-                        }.font(.caption).foregroundStyle(.secondary)
-                    }
-                    Text("扩展屏同色位置相互对应；通用控制按本机通道范围渐变标记。另一台 Mac 也需运行本应用才能显示对端提示。")
-                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                    VStack(alignment: .leading, spacing: 14) {
-                        Toggle("自动标记扩展屏交界", isOn: $model.preferences.automatic)
-                        VStack(alignment: .leading, spacing: 5) {
-                            Toggle("自动标记通用控制通道", isOn: $model.preferences.automaticUniversalControl)
-                            Text(model.universalControlStatus).font(.caption).foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        Toggle("靠近任意屏幕边缘时显示全部通道", isOn: $model.preferences.nearOnly)
-                            .help("靠近任意屏幕的任意边缘约 110 点时，全部提示线一起显示；离开所有边缘后一起隐藏。")
+            HStack(spacing: 0) {
+                sidebar
+                Divider()
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 22) {
                         VStack(alignment: .leading, spacing: 6) {
-                            Toggle("锁屏时显示边缘", isOn: $model.preferences.showWhenLocked)
-                            if model.preferences.showWhenLocked {
-                                Toggle("锁屏时保持常显", isOn: $model.preferences.alwaysShowWhenLocked)
-                                    .padding(.leading, 20)
-                            }
-                            Text("适用于登录后锁屏；重启后的首次登录界面不显示。通用控制断开时，其自动提示会清除。")
-                                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                            if let message = model.lockScreenMessage {
-                                Text(message).font(.caption).foregroundStyle(.orange)
-                            }
+                            Text(page.title).font(.system(size: 23, weight: .semibold))
+                            Text(page.subtitle).font(.system(size: 12)).foregroundStyle(.secondary)
+                        }.frame(maxWidth: .infinity, alignment: .leading)
+                        pageContent
+                        if let warning = model.configWarning {
+                            Label(warning, systemImage: "exclamationmark.triangle")
+                                .font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
                         }
-                        HStack {
-                            Text("线条粗细").frame(width: 76, alignment: .leading)
-                            Slider(value: $model.preferences.thickness, in: 2...8, step: 1)
-                            Text("\(Int(model.preferences.thickness)) 点").monospacedDigit().foregroundStyle(.secondary).frame(width: 36)
-                            Button("预览 4 秒") { model.onPreview?() }
-                                .help("临时在每块本机屏幕右侧显示示例线，预览不会保存成通道。")
-                        }
-                    }.padding(16).background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 12))
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack {
-                            Text("手动补充标记").font(.headline)
-                            Spacer()
-                            Button { model.addMarker() } label: { Label("添加标记", systemImage: "plus") }
-                                .disabled(model.displays.isEmpty)
-                        }
-                        Text("自动识别后无需添加。若需要额外提示，可按系统排列手动标记；手动标记需自行开关。")
-                            .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                        if model.preferences.markers.isEmpty {
-                            HStack(spacing: 12) {
-                                Image(systemName: "laptopcomputer.and.ipad").font(.title2).foregroundStyle(.secondary)
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("当前没有手动标记").font(.system(size: 13, weight: .medium))
-                                    Text("已连接的通用控制通道会自动显示。")
-                                        .font(.caption).foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                            }.padding(18).frame(maxWidth: .infinity)
-                                .background(Color.primary.opacity(0.025), in: RoundedRectangle(cornerRadius: 12))
-                        }
-                        ForEach($model.preferences.markers) { $marker in
-                            MarkerEditor(marker: $marker, displays: model.displays) { model.removeMarker(marker.id) }
-                        }
-                    }
-                    if let warning = model.configWarning { Text(warning).font(.caption).foregroundStyle(.orange) }
-                    VStack(alignment: .leading, spacing: 6) {
-                        Toggle("显示菜单栏图标", isOn: $model.preferences.showMenuBarIcon)
-                        Text("隐藏后边缘提示仍会运行；重新打开“跨屏边缘.app”即可进入设置并恢复图标。")
-                            .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                    }
-                    HStack(alignment: .top) {
-                        Toggle("登录时启动", isOn: Binding(get: { model.loginEnabled }, set: { model.setLogin($0) }))
-                        Spacer()
-                        Button("系统显示器设置…") { model.openDisplaySettings() }
-                    }
-                    if let message = model.loginMessage { Text(message).font(.caption).foregroundStyle(.secondary) }
-                }.padding(24)
+                    }.padding(26).frame(maxWidth: 720, alignment: .leading)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                }.background(Color(nsColor: .windowBackgroundColor))
             }
             Divider()
-            HStack {
-                Image(systemName: "cursorarrow").foregroundStyle(mint)
-                Text("提示线可穿透点击；键鼠共享由系统通用控制完成。")
+            HStack(spacing: 6) {
+                Image(systemName: "cursorarrow.rays")
+                Text("提示线穿透点击，不影响键鼠操作")
                 Spacer()
-                Text("1.3.0").monospacedDigit()
-            }.font(.caption).foregroundStyle(.secondary).padding(.horizontal, 24).padding(.vertical, 13)
+                Text(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")
+                    .monospacedDigit()
+            }.font(.system(size: 11)).foregroundStyle(.secondary)
+                .padding(.horizontal, 22).padding(.vertical, 12)
         }
-        .frame(minWidth: 660, idealWidth: 720, minHeight: 650)
+        .frame(minWidth: 760, idealWidth: 820, minHeight: 610)
+        .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    private var header: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "rectangle.split.2x1")
+                .font(.system(size: 22, weight: .medium)).foregroundStyle(settingsAccent)
+                .frame(width: 42, height: 42).background(settingsAccent.opacity(0.10), in: RoundedRectangle(cornerRadius: 11))
+            VStack(alignment: .leading, spacing: 3) {
+                Text("跨屏边缘").font(.system(size: 17, weight: .semibold))
+                Text("让跨屏通道一目了然").font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+            Spacer()
+            Toggle("显示边缘", isOn: $model.preferences.enabled)
+                .toggleStyle(.switch).controlSize(.small).accessibilityIdentifier("overlayEnabled")
+        }.padding(.horizontal, 22).padding(.vertical, 15)
+    }
+
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(SettingsPage.allCases) { item in
+                Button { page = item } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: item.icon).font(.system(size: 14)).frame(width: 20)
+                        Text(item.title).font(.system(size: 13, weight: page == item ? .semibold : .regular))
+                        Spacer(minLength: 0)
+                    }.foregroundStyle(page == item ? settingsAccent : Color.primary)
+                        .padding(.horizontal, 12).frame(height: 38)
+                        .background(page == item ? settingsAccent.opacity(0.11) : .clear, in: RoundedRectangle(cornerRadius: 8))
+                        .contentShape(Rectangle())
+                }.buttonStyle(.plain).accessibilityIdentifier("settingsPage-\(item.rawValue)")
+                    .accessibilityValue(page == item ? "已选中" : "")
+            }
+            Spacer()
+            VStack(alignment: .leading, spacing: 5) {
+                Text("\(model.displays.count) 块本机屏幕")
+                Text(model.preferences.enabled ? "边缘提示已开启" : "边缘提示已暂停")
+            }.font(.system(size: 11)).foregroundStyle(.secondary).padding(12)
+        }.padding(12).frame(width: 166).frame(maxHeight: .infinity)
+            .background(Color(nsColor: .controlBackgroundColor).opacity(0.45))
+    }
+
+    @ViewBuilder private var pageContent: some View {
+        switch page {
+        case .appearance: AppearanceSettings(model: model)
+        case .styles: StyleSettings(model: model)
+        case .channels: ChannelSettings(model: model)
+        case .markers: ManualSettings(model: model)
+        case .general: GeneralSettings(model: model)
+        }
     }
 }
+
 
 struct MarkerEditor: View {
     @Binding var marker: ManualMarker
@@ -148,13 +154,19 @@ struct MarkerEditor: View {
                     ForEach(Edge.allCases) { edge in Text(edge.title).tag(edge) }
                 }.frame(width: 155)
             }
-            HStack {
-                Text("起点").font(.caption).frame(width: 28)
-                Slider(value: Binding(get: { marker.start * 100 }, set: { marker.start = min($0 / 100, marker.end - 0.01) }), in: 0...99, step: 1)
-                Text("\(Int((marker.start * 100).rounded()))%").monospacedDigit().font(.caption).frame(width: 34)
-                Text("终点").font(.caption).frame(width: 28)
-                Slider(value: Binding(get: { marker.end * 100 }, set: { marker.end = max($0 / 100, marker.start + 0.01) }), in: 1...100, step: 1)
-                Text("\(Int((marker.end * 100).rounded()))%").monospacedDigit().font(.caption).frame(width: 34)
+            VStack(spacing: 10) {
+                HStack(spacing: 12) {
+                    Text("起点").font(.caption).frame(width: 32, alignment: .leading)
+                    Slider(value: Binding(get: { marker.start * 100 }, set: { marker.start = min($0.rounded() / 100, marker.end - 0.01) }), in: 0...99)
+                        .accessibilityLabel("标记起点")
+                    Text("\(Int((marker.start * 100).rounded()))%").monospacedDigit().font(.caption).frame(width: 38, alignment: .trailing)
+                }
+                HStack(spacing: 12) {
+                    Text("终点").font(.caption).frame(width: 32, alignment: .leading)
+                    Slider(value: Binding(get: { marker.end * 100 }, set: { marker.end = max($0.rounded() / 100, marker.start + 0.01) }), in: 1...100)
+                        .accessibilityLabel("标记终点")
+                    Text("\(Int((marker.end * 100).rounded()))%").monospacedDigit().font(.caption).frame(width: 38, alignment: .trailing)
+                }
             }
             Text(marker.edge.vertical ? "0% 是屏幕顶端，100% 是底端；边缘线会随调整实时更新。" : "0% 是屏幕左端，100% 是右端；边缘线会随调整实时更新。")
                 .font(.caption2).foregroundStyle(.secondary)
@@ -165,7 +177,8 @@ struct MarkerEditor: View {
 struct DisplayMap: View {
     let displays: [DisplayInfo]
     let portals: [Portal]
-    private let remoteColor = Color(red: 0.91, green: 0.35, blue: 0.08)
+    let preferences: Preferences
+    private let remoteColor = Color.accentColor
 
     var body: some View {
         let hints = DisplayMapGeometry.remoteHints(displays: displays, portals: portals)
@@ -212,7 +225,7 @@ struct DisplayMap: View {
                     ForEach(portals) { portal in
                         if let display = displays.first(where: { $0.id == portal.displayID }) {
                             let rect = portal.rect(on: display, thickness: 4 / scale)
-                            RoundedRectangle(cornerRadius: 2).fill(passageGradient(manual: portal.usesWarmPalette, vertical: portal.edge.vertical))
+                            StyleStripSample(appearance: preferences.appearance(for: portal), vertical: portal.edge.vertical)
                                 .frame(width: max(4, rect.width * scale), height: max(4, rect.height * scale))
                                 .position(point(CGPoint(x: rect.midX, y: rect.midY)))
                                 .help("\(portal.edge.title) → \(portal.label)")

@@ -3,7 +3,7 @@ import SwiftUI
 import CoreServices
 
 @MainActor final class AppDelegate: NSObject, NSApplicationDelegate {
-    let smokeTest = CommandLine.arguments.contains("--smoke-test") || CommandLine.arguments.contains("--uc-check")
+    let smokeTest = CommandLine.arguments.contains("--smoke-test") || CommandLine.arguments.contains("--uc-check") || CommandLine.arguments.contains("--settings-snapshots")
     lazy var model = AppModel(ephemeral: smokeTest)
     let overlays = OverlayController()
     var status: NSStatusItem!
@@ -55,10 +55,12 @@ import CoreServices
         let launchedAtLogin = event?.eventID == kAEOpenApplication &&
             event?.paramDescriptor(forKeyword: keyAEPropData)?.enumCodeValue == keyAELaunchedAsLogInItem
         // A manual cold launch must remain a settings entry point when the icon is hidden.
-        if firstLaunch || CommandLine.arguments.contains("--settings") || smokeTest ||
+        if firstLaunch || CommandLine.arguments.contains("--settings") || CommandLine.arguments.contains("--styles") || smokeTest ||
             (!model.preferences.showMenuBarIcon && !launchedAtLogin) { showSettings() }
         if !smokeTest { UserDefaults.standard.set(true, forKey: "screenEdge.didLaunch") }
-        if CommandLine.arguments.contains("--uc-check") {
+        if CommandLine.arguments.contains("--settings-snapshots") {
+            Task { @MainActor in await self.runSettingsSnapshots() }
+        } else if CommandLine.arguments.contains("--uc-check") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { self.runUCCheck() }
         } else if smokeTest { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { self.runSmokeTest() } }
     }
@@ -70,8 +72,15 @@ import CoreServices
         title.isEnabled = false; menu.addItem(title)
         let toggle = NSMenuItem(title: "显示边缘", action: #selector(toggleEnabled), keyEquivalent: "")
         toggle.target = self; toggle.state = model.preferences.enabled ? .on : .off; menu.addItem(toggle)
-        let near = NSMenuItem(title: "靠近边缘显示全部通道", action: #selector(toggleNear), keyEquivalent: "")
-        near.target = self; near.state = model.preferences.nearOnly ? .on : .off; menu.addItem(near)
+        let modeItem = NSMenuItem(title: "显示模式", action: nil, keyEquivalent: "")
+        let modeMenu = NSMenu()
+        for mode in EdgeDisplayMode.allCases {
+            let item = NSMenuItem(title: mode.title, action: #selector(selectDisplayMode(_:)), keyEquivalent: "")
+            item.target = self; item.representedObject = mode.rawValue
+            item.state = model.preferences.displayMode == mode ? .on : .off
+            modeMenu.addItem(item)
+        }
+        modeItem.submenu = modeMenu; menu.addItem(modeItem)
         let uc = NSMenuItem(title: "自动识别通用控制", action: #selector(toggleUC), keyEquivalent: "")
         uc.target = self; uc.state = model.preferences.automaticUniversalControl ? .on : .off; menu.addItem(uc)
         menu.addItem(.separator())
@@ -92,7 +101,10 @@ import CoreServices
     }
     @objc func toggleEnabled() { model.preferences.enabled.toggle() }
     @objc func toggleUC() { model.preferences.automaticUniversalControl.toggle() }
-    @objc func toggleNear() { model.preferences.nearOnly.toggle() }
+    @objc func selectDisplayMode(_ item: NSMenuItem) {
+        guard let raw = item.representedObject as? String, let mode = EdgeDisplayMode(rawValue: raw) else { return }
+        model.preferences.displayMode = mode
+    }
     @objc func toggleMarker(_ item: NSMenuItem) {
         guard let id = item.representedObject as? String,
               let index = model.preferences.markers.firstIndex(where: { $0.id.uuidString == id }) else { return }
@@ -102,12 +114,12 @@ import CoreServices
     @objc func quit() { NSApp.terminate(nil) }
     @objc func showSettings() {
         if window == nil {
-            let controller = NSHostingController(rootView: SettingsView(model: model))
+            let controller = NSHostingController(rootView: SettingsView(model: model, initialPage: CommandLine.arguments.contains("--styles") ? .styles : .appearance))
             let w = NSWindow(contentViewController: controller)
             w.title = "跨屏边缘"
             w.styleMask = [.titled, .closable, .miniaturizable, .resizable]
-            w.setContentSize(NSSize(width: 720, height: 720))
-            w.minSize = NSSize(width: 680, height: 650)
+            w.setContentSize(NSSize(width: 820, height: 720))
+            w.contentMinSize = NSSize(width: 760, height: 610)
             w.isReleasedWhenClosed = false
             w.center()
             window = w
@@ -142,6 +154,7 @@ import CoreServices
                     precondition(entry.window.frame == entry.frame)
                     precondition(entry.window.ignoresMouseEvents && !entry.window.canBecomeKey)
                     precondition((entry.window.contentView as? EdgeStripView)?.manual == true)
+                    precondition((entry.window.contentView as? EdgeStripView)?.edgeAppearance == self.model.preferences.universalAppearance)
                     precondition(entry.window.isVisible && entry.window.alphaValue == 1)
                 }
                 self.model.applyUniversalControlResponse([], error: nil)
@@ -152,9 +165,9 @@ import CoreServices
                 self.model.applyUniversalControlResponse(dictionaries, error: nil)
                 self.model.preferences.automaticUniversalControl = false
                 precondition(self.overlays.entries.allSatisfy { !$0.portal.universalControl })
-                print("PASS: read-only Universal Control query, \(raw.count) active edge(s), mapped and rendered as click-through warm gradients; empty/error/disable responses remove UC overlays")
+                print("PASS: read-only Universal Control query, \(raw.count) active edge(s), mapped and rendered with the configured UC appearance; empty/error/disable responses remove UC overlays")
                 for portal in portals {
-                    print("edge=\(portal.edge.rawValue) start=\(portal.start) end=\(portal.end) warmGradient=\(portal.usesWarmPalette)")
+                    print("edge=\(portal.edge.rawValue) start=\(portal.start) end=\(portal.end)")
                 }
                 NSApp.terminate(nil)
             }
@@ -202,6 +215,7 @@ import CoreServices
             }
         }
         print("PASS: actual display geometry has \(realPortals.count / 2) passage(s), \(matchedSamples) corresponding gradient samples; both gradient palettes match across 400/800-point lengths in both orientations")
+        runAppearanceChecks()
         model.preferences.automatic = false
         model.preferences.nearOnly = false
         model.preferences.markers = [ManualMarker(displayID: screen.id, label: "测试标记")]
@@ -236,6 +250,7 @@ import CoreServices
         }
         precondition(overlays.entries.count == 2)
         precondition(overlays.entries.allSatisfy { $0.window.canBecomeVisibleWithoutLogin && $0.window.ignoresMouseEvents && !$0.window.canBecomeKey })
+        precondition(overlays.entries.allSatisfy { ($0.window.contentView as? EdgeStripView)?.edgeAppearance == model.preferences.universalAppearance }, "lock-screen rebuild preserves the configured style")
         precondition(window?.canBecomeVisibleWithoutLogin == false, "settings window stays off the lock screen")
         overlays.updateProximity(at: CGPoint(x: screen.frame.midX, y: screen.frame.midY))
         precondition(overlays.entries.allSatisfy { $0.window.alphaValue == 1 }, "lock-screen always-visible setting overrides desktop proximity")
@@ -248,6 +263,29 @@ import CoreServices
         precondition(overlays.entries.count == 2 && !overlays.usesLockScreenSpace)
         precondition(overlays.entries.allSatisfy { !$0.window.canBecomeVisibleWithoutLogin }, "unlock restores ordinary desktop panels")
         print("PASS: temporary lock overlay space, edge-only membership, visibility options and teardown; simulated transition only, actual screen lock still requires validation")
+        model.preferences.displayMode = .pointerScreen
+        let localPointer = PointerSnapshot(location: CGPoint(x: screen.frame.midX, y: screen.frame.midY), isVisible: true)
+        overlays.updateVisibility(pointer: localPointer)
+        precondition(overlays.entries.allSatisfy { $0.window.alphaValue == 1 }, "pointer screen shows all of its passages, including from screen center")
+        overlays.updateVisibility(pointer: PointerSnapshot(location: localPointer.location, isVisible: false))
+        precondition(overlays.entries.allSatisfy { $0.window.alphaValue == 0 }, "hidden cursor cannot leave stale-coordinate overlays visible")
+        overlays.updateVisibility(pointer: PointerSnapshot(location: localPointer.location, isVisible: nil))
+        precondition(overlays.entries.allSatisfy { $0.window.alphaValue == 0 }, "unknown cursor visibility hides pointer-screen overlays")
+        overlays.updateVisibility(pointer: localPointer)
+        precondition(overlays.entries.allSatisfy { $0.window.alphaValue == 1 }, "returning pointer restores its passages")
+        model.preferences.showWhenLocked = true
+        model.preferences.alwaysShowWhenLocked = true
+        model.setScreenLocked(true)
+        precondition(overlays.usesLockScreenSpace)
+        overlays.updateVisibility(pointer: PointerSnapshot(location: localPointer.location, isVisible: false))
+        precondition(overlays.entries.allSatisfy { $0.window.alphaValue == 0 }, "lock-screen constant visibility cannot override pointer ownership")
+        overlays.updateVisibility(pointer: localPointer)
+        precondition(overlays.entries.allSatisfy { $0.window.alphaValue == 1 }, "local pointer reveals lock-screen passages")
+        model.setScreenLocked(false)
+        model.preferences.displayMode = .always
+        overlays.updateVisibility(pointer: PointerSnapshot(location: localPointer.location, isVisible: false))
+        precondition(overlays.entries.allSatisfy { $0.window.alphaValue == 1 }, "switching back to always visible restores original behavior")
+        print("PASS: pointer-screen native visibility, hidden/unknown state, return, mode switching and simulated lock; visibility API available=\(PointerStateReader.isAvailable)")
         model.preferences.markers = []
         precondition(overlays.entries.isEmpty)
         print("PASS: overlay bounds, click-through, nonactivation, Spaces, switches, edits, deletion; near any screen edge reveals all passages, screen center hides all; \(model.displays.count) local screen(s)")

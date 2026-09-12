@@ -167,6 +167,87 @@ import CoreGraphics
         let savedLockPreferences = try JSONDecoder().decode(Preferences.self, from: JSONEncoder().encode(lockPreferences))
         expect(!savedLockPreferences.showWhenLocked && !savedLockPreferences.alwaysShowWhenLocked,
                "lock-screen display and proximity choices survive saving")
+        expect(migrated.displayMode == .nearEdges, "legacy proximity setting migrates to its matching mode")
+        expect(try JSONDecoder().decode(Preferences.self, from: Data("{}".utf8)).displayMode == .always,
+               "new installation keeps always-visible default")
+        for mode in EdgeDisplayMode.allCases {
+            var p = migrated; p.displayMode = mode
+            let restored = try JSONDecoder().decode(Preferences.self, from: JSONEncoder().encode(p))
+            expect(restored.displayMode == mode && restored.markers == migrated.markers && restored.thickness == 3,
+                   "each display mode persists without losing existing settings")
+        }
+        expect(try JSONDecoder().decode(Preferences.self, from: Data("{\"nearOnly\":true,\"displayMode\":\"pointerScreen\"}".utf8)).displayMode == .pointerScreen,
+               "explicit mode takes priority over legacy proximity field")
+        expect(try JSONDecoder().decode(Preferences.self, from: Data("{\"nearOnly\":true,\"displayMode\":\"futureMode\"}".utf8)).displayMode == .nearEdges,
+               "unknown mode falls back to legacy setting without discarding preferences")
+
+        expect(migrated.extendedAppearance == .legacyExtended && migrated.universalAppearance == .legacyUniversal,
+               "upgrades retain the original two gradient palettes")
+        expect(Preferences().extendedAppearance == .softExtended && Preferences().universalAppearance == .softUniversal,
+               "fresh installations use the softer independent solid styles")
+        var styled = migrated
+        styled.extendedAppearance = EdgeAppearance(material: .solid, color: .mint, opacity: 0.45)
+        styled.universalAppearance = EdgeAppearance(material: .gradient, gradient: .custom,
+            gradientStart: .rose, gradientEnd: .blue, opacity: 0.7)
+        let restoredStyle = try JSONDecoder().decode(Preferences.self, from: JSONEncoder().encode(styled))
+        expect(restoredStyle.extendedAppearance == styled.extendedAppearance && restoredStyle.universalAppearance == styled.universalAppearance,
+               "independent channel colors, custom gradient and opacity survive restart")
+        expect(restoredStyle.markers == migrated.markers && restoredStyle.thickness == migrated.thickness && restoredStyle.displayMode == migrated.displayMode,
+               "saving appearances preserves markers, width and visibility mode")
+        expect(styled.appearance(for: ucTop) == styled.universalAppearance && styled.appearance(for: pair[0]) == styled.extendedAppearance,
+               "automatic UC and extension passages select their respective styles")
+        expect(styled.appearance(for: Portal(id: "manual-style", displayID: main.id, edge: .left, start: 0, end: 200, label: "Synthetic", manual: true)) == styled.universalAppearance,
+               "manual markers retain the UC style association")
+        expect(styled.extendedAppearance.colors == [.mint, .mint] && styled.universalAppearance.colors == [.rose, .blue],
+               "solid and custom gradient colors reach the renderer without preset substitution")
+        for preset in EdgeGradient.allCases where preset != .custom {
+            let style = EdgeAppearance(material: .gradient, gradient: preset)
+            expect(style.colors.count >= 2 && style.colors.first != style.colors.last, "gradient preset has distinct endpoints: \(preset)")
+        }
+        let damagedStyle = try JSONDecoder().decode(Preferences.self, from: Data("{\"thickness\":7,\"displayMode\":\"pointerScreen\",\"extendedAppearance\":\"bad\",\"universalAppearance\":{\"material\":\"future\",\"color\":null,\"opacity\":10}}".utf8))
+        expect(damagedStyle.thickness == 7 && damagedStyle.displayMode == .pointerScreen && damagedStyle.extendedAppearance == .legacyExtended,
+               "invalid appearance does not reset unrelated user preferences")
+        expect(damagedStyle.universalAppearance.material == .solid && damagedStyle.universalAppearance.opacity == 1,
+               "unknown material and out-of-range opacity have safe fallbacks")
+        expect(EdgeColor(-1, 2, .nan) == EdgeColor(0, 1, 0.5), "invalid color channels cannot escape sRGB bounds")
+        expect(EdgeAppearance(opacity: -1).effectiveOpacity == 0.15 && EdgeAppearance(opacity: .nan).effectiveOpacity == 0.8,
+               "invalid runtime opacity cannot hide a configured edge completely")
+
+        let retiredGlass = try JSONDecoder().decode(Preferences.self, from: Data("{\"thickness\":6,\"displayMode\":\"pointerScreen\",\"extendedAppearance\":{\"material\":\"glass\",\"color\":{\"red\":0.2,\"green\":0.4,\"blue\":0.7},\"opacity\":0.55}}".utf8))
+        expect(retiredGlass.extendedAppearance.material == .solid && retiredGlass.extendedAppearance.color == EdgeColor(0.2, 0.4, 0.7) && retiredGlass.extendedAppearance.opacity == 0.55 && retiredGlass.thickness == 6 && retiredGlass.displayMode == .pointerScreen,
+               "retired glass migrates to solid without losing its tint, opacity or behavior preferences")
+        expect(!String(data: try JSONEncoder().encode(retiredGlass), encoding: .utf8)!.contains("glass"),
+               "saving a migrated appearance no longer writes the retired material")
+
+        func visible(_ point: CGPoint, cursor: Bool? = true, mode: EdgeDisplayMode = .pointerScreen,
+                     screens: [DisplayInfo] = [main, right], locked: Bool = false, lockAlways: Bool = true) -> Set<String> {
+            OverlayVisibility.visibleDisplayIDs(mode: mode, displays: screens,
+                pointer: PointerSnapshot(location: point, isVisible: cursor), screenLocked: locked, alwaysShowWhenLocked: lockAlways)
+        }
+        let mainCenter = CGPoint(x: 720, y: 450), rightCenter = CGPoint(x: 2400, y: 740)
+        expect(visible(mainCenter) == [main.id], "screen center reveals only that screen's passages")
+        expect(visible(rightCenter) == [right.id], "moving onto a second display switches the visible screen")
+        expect(visible(mainCenter, cursor: false).isEmpty, "UC departure hides stale local coordinates")
+        expect(visible(mainCenter, cursor: nil).isEmpty, "unavailable visibility signal cannot show stale edges")
+        expect(visible(mainCenter) == [main.id], "UC return restores the local screen without an activity timeout")
+        expect(visible(CGPoint(x: 1440, y: 450)) == [right.id], "shared vertical boundary belongs to exactly one screen")
+        expect(visible(CGPoint(x: 720, y: 900), screens: [above, main]) == [main.id], "top row belongs to the lower screen after AppKit y flip")
+        expect(visible(CGPoint(x: 300, y: 901), screens: [main, above]) == [above.id], "crossing above switches to the upper screen")
+        expect(visible(CGPoint(x: -50, y: -400), screens: [main, below]) == [below.id], "negative display origins work")
+        expect(visible(CGPoint(x: -50, y: 0), screens: [main, below]) == [below.id], "negative-origin screen includes its top row")
+        expect(visible(CGPoint(x: 1800, y: 50)).isEmpty, "desktop gaps do not select the nearest screen")
+        expect(visible(CGPoint(x: 9000, y: 9000)).isEmpty, "off-desktop coordinates hide all screens")
+        expect(visible(CGPoint(x: CGFloat.nan, y: 0)).isEmpty, "invalid pointer coordinates are rejected")
+        expect(visible(mainCenter, screens: []).isEmpty, "no display snapshot means no visible edge")
+        expect(visible(mainCenter, screens: [right]).isEmpty, "unplugged screen is not retained")
+        expect(visible(mainCenter, screens: [mirrorDesktop]) == [mirrorDesktop.id], "mirrored desktop selects only the active display identity")
+        expect(visible(mainCenter, cursor: false, mode: .always) == [main.id, right.id], "always mode remains independent of cursor visibility")
+        expect(visible(mainCenter, mode: .nearEdges).isEmpty, "proximity mode still hides at the center")
+        expect(visible(CGPoint(x: 20, y: 450), mode: .nearEdges) == [main.id, right.id], "proximity mode still reveals all displays together")
+        expect(visible(mainCenter, mode: .nearEdges, locked: true) == [main.id, right.id], "lock-screen constant display still overrides proximity")
+        expect(visible(mainCenter, mode: .nearEdges, locked: true, lockAlways: false).isEmpty, "lock-screen proximity choice is preserved")
+        expect(visible(mainCenter, locked: true) == [main.id], "lock-screen constant option cannot reveal non-pointer screens")
+        expect(visible(mainCenter, cursor: false, locked: true).isEmpty, "lock-screen constant option cannot reveal a remote pointer")
         print("PASS: \(checks) geometry and configuration checks")
     }
 }
