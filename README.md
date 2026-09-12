@@ -2,6 +2,16 @@
 
 一个原生 macOS 菜单栏小工具：在屏幕边缘显示细线，帮助找到鼠标能跨向另一块屏幕的位置。继续使用苹果自带的扩展屏和通用控制。
 
+[English](README.en.md) · [下载最新版本](https://github.com/vincilawyer/ScreenEdge/releases/latest) · [MIT 开源许可](LICENSE)
+
+![跨屏通道示意：蓝绿渐变连接扩展屏，橙红渐变连接通用控制对端](docs/images/passages.svg)
+
+## 下载
+
+在 [Releases](https://github.com/vincilawyer/ScreenEdge/releases/latest) 下载 `ScreenEdge-1.3.0-macOS-arm64.zip`，解压后把 **跨屏边缘.app** 放入“应用程序”文件夹，再双击打开。预编译版适用于 Apple 芯片（M1 及更新）Mac，要求 macOS 13 或更新版本；Intel Mac 可从源码构建，尚未在 Intel 设备上实测。
+
+下载包采用临时签名，**尚未经过 Apple 公证**。首次打开可能需要按[苹果官方说明](https://support.apple.com/en-gb/102445)确认打开；也可以选择从源码构建。Release 同时提供 SHA-256 校验文件。
+
 ## 使用
 
 1. 打开 **跨屏边缘.app**，菜单栏会出现双屏图标。
@@ -25,7 +35,7 @@
 
 ## 支持范围
 
-- macOS 13+；当前交付构建为 Apple Silicon（arm64）。
+- macOS 13+；当前预编译下载为 Apple Silicon（arm64）。
 - 普通扩展屏：使用公开的 NSScreen / CoreGraphics 坐标，自动绘制双向交界。
 - 通用控制：1.1.0 使用系统 UniversalControl 私有框架的基本只读 XPC 接口。已在 macOS 26.6.2 实测成功；其他系统版本尚未实测。接口不兼容时提示状态，并保留手动补充功能。实现说明见 [通用控制读取记录](docs/universal-control.md)。
 - 覆盖层设置为跨桌面和全屏辅助窗口。锁屏、独占显示和特殊系统界面由系统管理，不能保证覆盖。
@@ -33,15 +43,17 @@
 
 ## 构建与检查
 
-只需 Xcode Command Line Tools，无第三方依赖：
+需要 macOS 和 Xcode Command Line Tools，无第三方依赖：
 
 ```sh
+git clone https://github.com/vincilawyer/ScreenEdge.git
+cd ScreenEdge
 ./scripts/build.sh
 ./scripts/test.sh
 open "build/跨屏边缘.app"
 ```
 
-输出在 `build/跨屏边缘.app`。默认构建 arm64，也可以指定 Intel 架构：
+输出在 `build/跨屏边缘.app`。打包另需 Python 3。运行 `./scripts/package.sh` 会重新构建，并在 `dist/` 生成 ZIP 和 SHA-256 校验文件。默认构建 arm64，也可以指定 Intel 架构：
 
 ```sh
 SCREENEDGE_ARCH=x86_64 ./scripts/build.sh
@@ -85,3 +97,7 @@ SCREENEDGE_ARCH=x86_64 ./scripts/build.sh
 用户设置存于应用的 `local.screenedge.app` 偏好域，不进入源码仓库。退出应用后即可移除 app；若已开启登录启动，先在应用中关闭。源码、构建产物和用户配置相互独立。
 
 MIT 许可，见 LICENSE。
+
+## 反馈与贡献
+
+欢迎通过 Issues 报告问题或提交 Pull Request。反馈时请说明 macOS 版本、Mac 芯片类型和屏幕排列示意，避免附上真实设备标识或私人诊断信息。
