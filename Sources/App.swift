@@ -1,0 +1,175 @@
+import AppKit
+import SwiftUI
+
+@MainActor final class AppDelegate: NSObject, NSApplicationDelegate {
+    let smokeTest = CommandLine.arguments.contains("--smoke-test")
+    lazy var model = AppModel(ephemeral: smokeTest)
+    let overlays = OverlayController()
+    var status: NSStatusItem!
+    var window: NSWindow?
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.setActivationPolicy(.accessory)
+        if !smokeTest {
+            let id = Bundle.main.bundleIdentifier ?? "local.screenedge.app"
+            if let other = NSRunningApplication.runningApplications(withBundleIdentifier: id).first(where: { $0.processIdentifier != ProcessInfo.processInfo.processIdentifier }) {
+                other.activate(options: [.activateIgnoringOtherApps])
+                NSApp.terminate(nil)
+                return
+            }
+        }
+        let mainMenu = NSMenu()
+        let appItem = NSMenuItem()
+        let appMenu = NSMenu()
+        let quitItem = NSMenuItem(title: "退出跨屏边缘", action: #selector(quit), keyEquivalent: "q")
+        quitItem.target = self; appMenu.addItem(quitItem); appItem.submenu = appMenu; mainMenu.addItem(appItem)
+        let editItem = NSMenuItem(title: "编辑", action: nil, keyEquivalent: "")
+        let editMenu = NSMenu(title: "编辑")
+        for (title, action, key) in [("撤销", "undo:", "z"), ("剪切", "cut:", "x"), ("拷贝", "copy:", "c"), ("粘贴", "paste:", "v"), ("全选", "selectAll:", "a")] {
+            editMenu.addItem(NSMenuItem(title: title, action: Selector(action), keyEquivalent: key))
+        }
+        editItem.submenu = editMenu; mainMenu.addItem(editItem); NSApp.mainMenu = mainMenu
+        status = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        status.button?.image = NSImage(systemSymbolName: "rectangle.split.2x1", accessibilityDescription: "跨屏边缘")
+        status.button?.toolTip = "跨屏边缘"
+        model.onChange = { [weak self] in
+            guard let self else { return }
+            self.overlays.rebuild(model: self.model)
+            self.updateMenu()
+        }
+        model.onPreview = { [weak self] in
+            guard let self else { return }
+            self.overlays.preview(model: self.model)
+        }
+        overlays.rebuild(model: model)
+        updateMenu()
+        let firstLaunch = !UserDefaults.standard.bool(forKey: "screenEdge.didLaunch")
+        if firstLaunch || CommandLine.arguments.contains("--settings") || smokeTest { showSettings() }
+        if !smokeTest { UserDefaults.standard.set(true, forKey: "screenEdge.didLaunch") }
+        if smokeTest { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { self.runSmokeTest() } }
+    }
+
+    func updateMenu() {
+        let menu = NSMenu()
+        let title = NSMenuItem(title: "跨屏边缘", action: nil, keyEquivalent: "")
+        title.isEnabled = false; menu.addItem(title)
+        let toggle = NSMenuItem(title: "显示边缘", action: #selector(toggleEnabled), keyEquivalent: "")
+        toggle.target = self; toggle.state = model.preferences.enabled ? .on : .off; menu.addItem(toggle)
+        let near = NSMenuItem(title: "仅靠近时显示", action: #selector(toggleNear), keyEquivalent: "")
+        near.target = self; near.state = model.preferences.nearOnly ? .on : .off; menu.addItem(near)
+        menu.addItem(.separator())
+        for marker in model.preferences.markers {
+            let item = NSMenuItem(title: "\(marker.edge.title) · \(marker.label)", action: #selector(toggleMarker(_:)), keyEquivalent: "")
+            item.representedObject = marker.id.uuidString; item.target = self
+            item.state = marker.enabled ? .on : .off; menu.addItem(item)
+        }
+        if !model.preferences.markers.isEmpty { menu.addItem(.separator()) }
+        let settings = NSMenuItem(title: "设置…", action: #selector(showSettings), keyEquivalent: ",")
+        settings.target = self; menu.addItem(settings)
+        let refresh = NSMenuItem(title: "刷新屏幕", action: #selector(refresh), keyEquivalent: "")
+        refresh.target = self; menu.addItem(refresh)
+        menu.addItem(.separator())
+        let quit = NSMenuItem(title: "退出跨屏边缘", action: #selector(quit), keyEquivalent: "q")
+        quit.target = self; menu.addItem(quit)
+        status.menu = menu
+    }
+    @objc func toggleEnabled() { model.preferences.enabled.toggle() }
+    @objc func toggleNear() { model.preferences.nearOnly.toggle() }
+    @objc func toggleMarker(_ item: NSMenuItem) {
+        guard let id = item.representedObject as? String,
+              let index = model.preferences.markers.firstIndex(where: { $0.id.uuidString == id }) else { return }
+        model.preferences.markers[index].enabled.toggle()
+    }
+    @objc func refresh() { model.refreshDisplays() }
+    @objc func quit() { NSApp.terminate(nil) }
+    @objc func showSettings() {
+        if window == nil {
+            let controller = NSHostingController(rootView: SettingsView(model: model))
+            let w = NSWindow(contentViewController: controller)
+            w.title = "跨屏边缘"
+            w.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+            w.setContentSize(NSSize(width: 720, height: 720))
+            w.minSize = NSSize(width: 680, height: 650)
+            w.isReleasedWhenClosed = false
+            w.center()
+            window = w
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        window?.makeKeyAndOrderFront(nil)
+    }
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { showSettings(); return true }
+    func applicationWillTerminate(_ notification: Notification) { }
+
+    func runSmokeTest() {
+        guard let screen = model.displays.first else { fputs("FAIL: no display\n", stderr); exit(1) }
+        let realPortals = PortalGeometry.automatic(model.displays)
+        var matchedSamples = 0
+        for a in realPortals {
+            guard let source = model.displays.first(where: { $0.id == a.displayID }),
+                  let b = realPortals.first(where: { $0.displayID != a.displayID && $0.label == source.name && $0.start == a.start && $0.end == a.end && $0.edge.vertical == a.edge.vertical }) else { continue }
+            for fraction: CGFloat in [0.05, 0.25, 0.5, 0.75, 0.95] {
+                let coordinate = a.start + fraction * (a.end - a.start)
+                let point = a.edge.vertical ? CGPoint(x: 0, y: coordinate) : CGPoint(x: coordinate, y: 0)
+                precondition(abs(a.gradientFraction(at: point) - b.gradientFraction(at: point)) < 0.00001)
+                matchedSamples += 1
+            }
+        }
+        // Render the same strip at two physical lengths, representing displays with different scales.
+        func render(_ size: NSSize, vertical: Bool) -> NSBitmapImageRep {
+            let view = EdgeStripView(frame: CGRect(origin: .zero, size: size), manual: false, vertical: vertical)
+            let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds)!
+            view.cacheDisplay(in: view.bounds, to: rep)
+            return rep
+        }
+        for vertical in [false, true] {
+            let a = render(vertical ? NSSize(width: 8, height: 400) : NSSize(width: 400, height: 8), vertical: vertical)
+            let b = render(vertical ? NSSize(width: 8, height: 800) : NSSize(width: 800, height: 8), vertical: vertical)
+            for fraction: CGFloat in [0.05, 0.25, 0.5, 0.75, 0.95] {
+                func color(_ image: NSBitmapImageRep) -> NSColor {
+                    let x = vertical ? image.pixelsWide / 2 : Int(CGFloat(image.pixelsWide) * fraction)
+                    let y = vertical ? Int(CGFloat(image.pixelsHigh) * fraction) : image.pixelsHigh / 2
+                    return image.colorAt(x: x, y: y)!.usingColorSpace(.deviceRGB)!
+                }
+                let ca = color(a), cb = color(b)
+                precondition(abs(ca.redComponent - cb.redComponent) < 0.04 && abs(ca.greenComponent - cb.greenComponent) < 0.04 && abs(ca.blueComponent - cb.blueComponent) < 0.04)
+                precondition(ca.alphaComponent > 0.9 && cb.alphaComponent > 0.9)
+            }
+            let start = a.colorAt(x: vertical ? a.pixelsWide / 2 : 12, y: vertical ? 12 : a.pixelsHigh / 2)!.usingColorSpace(.deviceRGB)!
+            let end = a.colorAt(x: vertical ? a.pixelsWide / 2 : a.pixelsWide - 12, y: vertical ? a.pixelsHigh - 12 : a.pixelsHigh / 2)!.usingColorSpace(.deviceRGB)!
+            precondition(abs(start.greenComponent - end.greenComponent) + abs(start.blueComponent - end.blueComponent) > 0.2)
+        }
+        print("PASS: actual display geometry has \(realPortals.count / 2) passage(s), \(matchedSamples) corresponding gradient samples; rendered gradients match across 400/800-point lengths in both orientations")
+        model.preferences.automatic = false
+        model.preferences.nearOnly = false
+        model.preferences.markers = [ManualMarker(displayID: screen.id, label: "测试标记")]
+        precondition(overlays.entries.count == 1)
+        let entry = overlays.entries[0]
+        precondition(entry.window.ignoresMouseEvents && !entry.window.canBecomeKey && !entry.window.canBecomeMain)
+        precondition(entry.window.level == .screenSaver)
+        precondition(entry.window.collectionBehavior.contains(.fullScreenAuxiliary))
+        precondition(entry.window.collectionBehavior.contains(.canJoinAllSpaces))
+        precondition(entry.window.frame == entry.frame, "actual=\(entry.window.frame), expected=\(entry.frame)")
+        precondition(abs(entry.frame.maxX - screen.frame.maxX) < 0.5)
+        model.preferences.enabled = false
+        precondition(overlays.entries.isEmpty)
+        model.preferences.enabled = true
+        precondition(overlays.entries.count == 1)
+        model.preferences.markers[0].edge = .top
+        precondition(abs(overlays.entries[0].window.frame.maxY - screen.frame.maxY) < 0.5)
+        model.preferences.nearOnly = true
+        precondition(overlays.entries.count == 1)
+        model.removeMarker(model.preferences.markers[0].id)
+        precondition(overlays.entries.isEmpty)
+        print("PASS: overlay creation, bounds, click-through, nonactivation, Spaces flags, enable/disable, edge edits, proximity mode, deletion; \(model.displays.count) local screen(s)")
+        NSApp.terminate(nil)
+    }
+}
+
+@main struct ScreenEdgeApp {
+    @MainActor static func main() {
+        let app = NSApplication.shared
+        let delegate = AppDelegate()
+        app.delegate = delegate
+        withExtendedLifetime(delegate) { app.run() }
+    }
+}
