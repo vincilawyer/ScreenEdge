@@ -20,4 +20,3 @@ struct Preferences: Codable {
         markers = try c.decodeIfPresent([ManualMarker].self, forKey: .markers) ?? []
     }
 }
-
