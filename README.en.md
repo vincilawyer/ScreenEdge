@@ -23,7 +23,7 @@ The download is ad-hoc signed and **not notarized by Apple**. macOS may ask you 
 - The remote screen in the preview is a **schematic destination**, not measured remote geometry. Remote screen names, full dimensions, and two-device color correspondence have not been verified.
 - Another Mac needs its own copy of the app to draw its edges. This macOS app cannot run on an iPad.
 - Overlays pass clicks through and do not intercept, inject, or move input. The app requests no Accessibility, Input Monitoring, or Screen Recording permission and makes no network requests.
-- This branch adds optional post-login lock-screen overlays via a temporary SkyLight space, with a separate always-visible setting. Native simulated-transition checks pass; an actual lock/unlock cycle is still awaiting validation. Boot login, FileVault, exclusive display modes and other special surfaces are outside its scope. See [lock-screen notes](docs/lock-screen.md).
+- Optional post-login lock-screen overlays use a temporary SkyLight space, with a separate always-visible setting. Native simulated-transition checks pass, and the user confirmed that the edge indicator works on the actual lock screen of their Intel Mac running macOS 15.7.9. Boot login, FileVault, exclusive display modes and other special surfaces are outside its scope. See [lock-screen notes](docs/lock-screen.md).
 
 ## Build
 
