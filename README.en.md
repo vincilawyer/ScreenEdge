@@ -39,7 +39,7 @@ cd ScreenEdge
 open "build/跨屏边缘.app"
 ```
 
-The default target is Apple Silicon. For an Intel build, use `SCREENEDGE_ARCH=x86_64 ./scripts/build.sh`. Current source is 1.5.0 / 7. Until merged, use branch `codex/pointer-screen-20260912`; the existing v1.3.0 archive lacks the mirror fix, pointer-screen mode and appearance editor. See the [AI maintenance and Apple Silicon handoff](docs/ai-maintenance.md).
+The default target is Apple Silicon. For an Intel build, use `SCREENEDGE_ARCH=x86_64 ./scripts/build.sh`. Current source is 1.5.0 / 7. Build from the latest `main` branch for these updates; the existing v1.3.0 archive lacks the mirror fix, pointer-screen mode and appearance editor. See the [AI maintenance and Apple Silicon handoff](docs/ai-maintenance.md).
 
 With Python 3 available, run `./scripts/package.sh` to build a ZIP and SHA-256 checksum under `dist/`. Live overlay checks require a logged-in graphical macOS session:
 

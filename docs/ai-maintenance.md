@@ -5,7 +5,7 @@
 用户需要自选两类边缘的渐变、纯色和透明度，并整理成原生 macOS 风格界面；最新要求将粗细统一放到“边缘样式”页，并移除毛玻璃选项。旧毛玻璃配色迁移为同颜色和透明度的纯色；此前已新增“仅鼠标所在屏幕显示”：鼠标在哪块屏幕，就只显示该屏幕已有的通道；通过通用控制离开本机时，本机隐藏提示线。两台 Mac 各自运行新版并选择此模式。用户已要求在另一台 Apple 芯片 Mac 上由当地的 GPT 执行构建与安装。
 
 - 仓库：`https://github.com/vincilawyer/ScreenEdge`。
-- 此功能的任务分支：`codex/pointer-screen-20260912`。开始前确认它是否已经合并；尚未合并时从此分支取得代码，不要只下载旧 Release 或仅构建旧 `main`。
+- 交付分支：`main`。从最新 `main` 获取下面的功能与界面更新，不要只下载旧 Release；已经合并的临时任务分支会清理。
 - 源码版本为 **1.5.0，构建号 7**；现有 **v1.3.0 Release 不包含新模式和外观编辑**。
 - 先读取根目录 `AGENTS.md`，再读本文件、`docs/pointer-screen.md`、`docs/appearance.md` 和 `docs/lock-screen.md`。保留当前机器自己的显示器排列、通用控制配置和应用偏好。
 - 本次仅提供原生 AppKit/SwiftUI 覆盖层，不增加键鼠共享服务、网络配对、输入拦截或显示器管理。
@@ -40,15 +40,15 @@ xcrun swiftc --version
 cd ~/Desktop
 git clone https://github.com/vincilawyer/ScreenEdge.git
 cd ScreenEdge
-git fetch origin
-git switch --track origin/codex/pointer-screen-20260912
+git switch main
+git pull --ff-only origin main
 ./scripts/test.sh
 SCREENEDGE_ARCH=arm64 ./scripts/build.sh
 lipo -archs "build/跨屏边缘.app/Contents/MacOS/ScreenEdge"
 codesign --verify --strict "build/跨屏边缘.app"
 ```
 
-若任务分支已经删除，先确认合并记录及 `main` 中存在 `Sources/PointerState.swift`、`Sources/OverlayVisibility.swift` 、`Sources/EdgeAppearance.swift`、`Sources/StyleSettings.swift` 和设置中的三种模式及“边缘样式”页，再从最新 `main` 构建。已有仓库时先检查 `git status`；不覆盖未提交修改，需改代码时另建任务分支和 worktree。
+构建前确认最新 `main` 中存在 `Sources/PointerState.swift`、`Sources/OverlayVisibility.swift`、`Sources/EdgeAppearance.swift`、`Sources/StyleSettings.swift` 和设置中的三种模式及“边缘样式”页。已有仓库时先检查 `git status`，再切换并快进更新 `main`；不覆盖未提交修改，需改代码时另建任务分支和 worktree。合并完成后清理临时分支，提交历史与 PR 仍可追溯。
 
 正常结果：138 项检查通过、应用包含 arm64、签名验证成功，Info.plist 显示 1.5.0 / 7。输出为 `build/跨屏边缘.app`。如需本地 ZIP，可执行 `SCREENEDGE_ARCH=arm64 ./scripts/package.sh`；上传 Release 是单独的发布工作，不要自动替换现有 v1.3.0 附件。
 

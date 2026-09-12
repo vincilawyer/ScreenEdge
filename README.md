@@ -10,7 +10,7 @@
 
 ## 下载
 
-在 [Releases](https://github.com/vincilawyer/ScreenEdge/releases/latest) 下载 `ScreenEdge-1.3.0-macOS-arm64.zip`，解压后把 **跨屏边缘.app** 放入“应用程序”文件夹，再双击打开。预编译版适用于 Apple 芯片（M1 及更新）Mac，要求 macOS 13 或更新版本；Intel Mac 可从源码构建。当前源码为 1.5.0 / 7，包含镜像兼容修复、鼠标所在屏幕模式和独立外观设置；上述 v1.3.0 发布包不含这些更新。未合并时请从 `codex/pointer-screen-20260912` 分支构建，详见 AI 维护说明。
+在 [Releases](https://github.com/vincilawyer/ScreenEdge/releases/latest) 下载 `ScreenEdge-1.3.0-macOS-arm64.zip`，解压后把 **跨屏边缘.app** 放入“应用程序”文件夹，再双击打开。预编译版适用于 Apple 芯片（M1 及更新）Mac，要求 macOS 13 或更新版本；Intel Mac 可从源码构建。当前源码为 1.5.0 / 7，包含镜像兼容修复、鼠标所在屏幕模式和独立外观设置；上述 v1.3.0 发布包不含这些更新。需要这些更新时请从最新 `main` 分支构建，详见 AI 维护说明。
 
 下载包采用临时签名，**尚未经过 Apple 公证**。首次打开可能需要按[苹果官方说明](https://support.apple.com/en-gb/102445)确认打开；也可以选择从源码构建。Release 同时提供 SHA-256 校验文件。
 
