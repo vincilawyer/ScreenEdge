@@ -6,6 +6,8 @@ struct DisplayInfo: Identifiable, Equatable {
     let name: String
     let frame: CGRect // AppKit coordinates: origin at bottom left
     var quartzFrame: CGRect? = nil // CoreGraphics global coordinates, y increases downward
+    // Online mirror members share this desktop, but UC may identify a secondary member.
+    var mirroredDisplayIDs: [String] = []
 }
 
 enum Edge: String, Codable, CaseIterable, Identifiable {

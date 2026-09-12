@@ -112,6 +112,22 @@ import CoreGraphics
         let abovePortal = UCEdgeValue(dictionary: ucData("top", [760, -900, 940, 1]))?.portal(displays: [ucAbove])
         expect(abovePortal?.rect(on: ucAbove, thickness: 3) == CGRect(x: 760, y: 1797, width: 940, height: 3), "UC above external display regression: negative global y and shifted x")
 
+        let mirrorDesktop = DisplayInfo(id: "MIRROR-PRIMARY", name: "Synthetic mirrored desktop",
+                                        frame: CGRect(x: 0, y: 0, width: 1920, height: 1080),
+                                        quartzFrame: CGRect(x: 0, y: 0, width: 1920, height: 1080),
+                                        mirroredDisplayIDs: ["MIRROR-SECONDARY"])
+        let mirrorEdge = UCEdgeValue(displayID: "mirror-secondary", edge: .bottom,
+                                    rect: CGRect(x: 0, y: 1079, width: 1119, height: 1))
+        let mirrorPortal = mirrorEdge.portal(displays: [mirrorDesktop])
+        expect(mirrorPortal?.displayID == mirrorDesktop.id, "UC secondary mirror identity maps to the visible desktop")
+        expect(mirrorPortal?.rect(on: mirrorDesktop, thickness: 3) == CGRect(x: 0, y: 0, width: 1119, height: 3), "UC mirrored bottom passage preserves the actual range")
+        expect(mirrorPortal?.universalControl == true && mirrorPortal?.manual == false, "mirrored UC remains an automatic warm passage")
+        var unmirroredDesktop = mirrorDesktop; unmirroredDesktop.mirroredDisplayIDs = []
+        expect(mirrorEdge.portal(displays: [unmirroredDesktop]) == nil, "removing mirror membership removes the alias mapping")
+        expect(UCEdgeValue(displayID: "UNKNOWN-SCREEN", edge: .bottom, rect: mirrorEdge.rect).portal(displays: [mirrorDesktop]) == nil, "matching geometry without a confirmed mirror identity is rejected")
+        expect(UCEdgeValue(displayID: "MIRROR-SECONDARY", edge: .bottom,
+                           rect: CGRect(x: 0, y: 500, width: 1119, height: 1)).portal(displays: [mirrorDesktop]) == nil, "mirror aliases still require compatible edge coordinates")
+
         let hints = DisplayMapGeometry.remoteHints(displays: [main, ucAbove], portals: [abovePortal!])
         expect(hints.count == 1, "map includes UC destination in addition to the two real screens")
         expect(hints[0].frame.minY > ucAbove.frame.maxY, "UC destination appears beyond the correct external screen edge")
@@ -144,6 +160,13 @@ import CoreGraphics
         var saved = migrated; saved.automaticUniversalControl = false
         expect(try JSONDecoder().decode(Preferences.self, from: JSONEncoder().encode(saved)).automaticUniversalControl == false, "UC disabled preference persists")
         expect(try JSONDecoder().decode(Preferences.self, from: Data("{}".utf8)).automaticUniversalControl, "new preferences enable automatic UC")
+        expect(migrated.showWhenLocked && migrated.alwaysShowWhenLocked && migrated.nearOnly,
+               "lock-screen defaults preserve the existing desktop proximity preference")
+        var lockPreferences = migrated
+        lockPreferences.showWhenLocked = false; lockPreferences.alwaysShowWhenLocked = false
+        let savedLockPreferences = try JSONDecoder().decode(Preferences.self, from: JSONEncoder().encode(lockPreferences))
+        expect(!savedLockPreferences.showWhenLocked && !savedLockPreferences.alwaysShowWhenLocked,
+               "lock-screen display and proximity choices survive saving")
         print("PASS: \(checks) geometry and configuration checks")
     }
 }
