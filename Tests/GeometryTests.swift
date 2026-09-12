@@ -167,6 +167,49 @@ import CoreGraphics
         let savedLockPreferences = try JSONDecoder().decode(Preferences.self, from: JSONEncoder().encode(lockPreferences))
         expect(!savedLockPreferences.showWhenLocked && !savedLockPreferences.alwaysShowWhenLocked,
                "lock-screen display and proximity choices survive saving")
+        expect(migrated.displayMode == .nearEdges, "legacy proximity setting migrates to its matching mode")
+        expect(try JSONDecoder().decode(Preferences.self, from: Data("{}".utf8)).displayMode == .always,
+               "new installation keeps always-visible default")
+        for mode in EdgeDisplayMode.allCases {
+            var p = migrated; p.displayMode = mode
+            let restored = try JSONDecoder().decode(Preferences.self, from: JSONEncoder().encode(p))
+            expect(restored.displayMode == mode && restored.markers == migrated.markers && restored.thickness == 3,
+                   "each display mode persists without losing existing settings")
+        }
+        expect(try JSONDecoder().decode(Preferences.self, from: Data("{\"nearOnly\":true,\"displayMode\":\"pointerScreen\"}".utf8)).displayMode == .pointerScreen,
+               "explicit mode takes priority over legacy proximity field")
+        expect(try JSONDecoder().decode(Preferences.self, from: Data("{\"nearOnly\":true,\"displayMode\":\"futureMode\"}".utf8)).displayMode == .nearEdges,
+               "unknown mode falls back to legacy setting without discarding preferences")
+
+        func visible(_ point: CGPoint, cursor: Bool? = true, mode: EdgeDisplayMode = .pointerScreen,
+                     screens: [DisplayInfo] = [main, right], locked: Bool = false, lockAlways: Bool = true) -> Set<String> {
+            OverlayVisibility.visibleDisplayIDs(mode: mode, displays: screens,
+                pointer: PointerSnapshot(location: point, isVisible: cursor), screenLocked: locked, alwaysShowWhenLocked: lockAlways)
+        }
+        let mainCenter = CGPoint(x: 720, y: 450), rightCenter = CGPoint(x: 2400, y: 740)
+        expect(visible(mainCenter) == [main.id], "screen center reveals only that screen's passages")
+        expect(visible(rightCenter) == [right.id], "moving onto a second display switches the visible screen")
+        expect(visible(mainCenter, cursor: false).isEmpty, "UC departure hides stale local coordinates")
+        expect(visible(mainCenter, cursor: nil).isEmpty, "unavailable visibility signal cannot show stale edges")
+        expect(visible(mainCenter) == [main.id], "UC return restores the local screen without an activity timeout")
+        expect(visible(CGPoint(x: 1440, y: 450)) == [right.id], "shared vertical boundary belongs to exactly one screen")
+        expect(visible(CGPoint(x: 720, y: 900), screens: [above, main]) == [main.id], "top row belongs to the lower screen after AppKit y flip")
+        expect(visible(CGPoint(x: 300, y: 901), screens: [main, above]) == [above.id], "crossing above switches to the upper screen")
+        expect(visible(CGPoint(x: -50, y: -400), screens: [main, below]) == [below.id], "negative display origins work")
+        expect(visible(CGPoint(x: -50, y: 0), screens: [main, below]) == [below.id], "negative-origin screen includes its top row")
+        expect(visible(CGPoint(x: 1800, y: 50)).isEmpty, "desktop gaps do not select the nearest screen")
+        expect(visible(CGPoint(x: 9000, y: 9000)).isEmpty, "off-desktop coordinates hide all screens")
+        expect(visible(CGPoint(x: CGFloat.nan, y: 0)).isEmpty, "invalid pointer coordinates are rejected")
+        expect(visible(mainCenter, screens: []).isEmpty, "no display snapshot means no visible edge")
+        expect(visible(mainCenter, screens: [right]).isEmpty, "unplugged screen is not retained")
+        expect(visible(mainCenter, screens: [mirrorDesktop]) == [mirrorDesktop.id], "mirrored desktop selects only the active display identity")
+        expect(visible(mainCenter, cursor: false, mode: .always) == [main.id, right.id], "always mode remains independent of cursor visibility")
+        expect(visible(mainCenter, mode: .nearEdges).isEmpty, "proximity mode still hides at the center")
+        expect(visible(CGPoint(x: 20, y: 450), mode: .nearEdges) == [main.id, right.id], "proximity mode still reveals all displays together")
+        expect(visible(mainCenter, mode: .nearEdges, locked: true) == [main.id, right.id], "lock-screen constant display still overrides proximity")
+        expect(visible(mainCenter, mode: .nearEdges, locked: true, lockAlways: false).isEmpty, "lock-screen proximity choice is preserved")
+        expect(visible(mainCenter, locked: true) == [main.id], "lock-screen constant option cannot reveal non-pointer screens")
+        expect(visible(mainCenter, cursor: false, locked: true).isEmpty, "lock-screen constant option cannot reveal a remote pointer")
         print("PASS: \(checks) geometry and configuration checks")
     }
 }

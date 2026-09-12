@@ -39,8 +39,10 @@ final class EdgeStripView: NSView {
     struct Entry { let window: EdgePanel; let portal: Portal; let frame: CGRect }
     private(set) var entries: [Entry] = []
     private var timer: Timer?
-    private var nearOnly = false
-    private var screenFrames: [CGRect] = []
+    private var displayMode: EdgeDisplayMode = .always
+    private var displays: [DisplayInfo] = []
+    private var screenLocked = false
+    private var alwaysShowWhenLocked = true
     private var previewWindows: [EdgePanel] = []
     private var previewTask: DispatchWorkItem?
     private var lockSpace: LockScreenSpace?
@@ -54,8 +56,10 @@ final class EdgeStripView: NSView {
         lockSpace = nil
         guard model.preferences.enabled else { return }
         guard !model.screenLocked || model.preferences.showWhenLocked else { return }
-        nearOnly = model.preferences.nearOnly && !(model.screenLocked && model.preferences.alwaysShowWhenLocked)
-        screenFrames = model.displays.map(\.frame)
+        displayMode = model.preferences.displayMode
+        displays = model.displays
+        screenLocked = model.screenLocked
+        alwaysShowWhenLocked = model.preferences.alwaysShowWhenLocked
         if model.screenLocked && !model.portals.isEmpty {
             guard let space = LockScreenSpace() else {
                 model.lockScreenMessage = "当前系统暂时无法在锁屏上显示提示线。"
@@ -79,15 +83,17 @@ final class EdgeStripView: NSView {
                 }
                 model.lockScreenMessage = nil
             }
-            panel.alphaValue = nearOnly ? 0 : 1.0
+            panel.alphaValue = 0
             panel.orderFrontRegardless()
             entries.append(Entry(window: panel, portal: portal, frame: rect))
         }
-        if nearOnly && !entries.isEmpty {
-            updateProximity()
-            // Read pointer position only. No event taps, accessibility permission, or input interception.
+        updateVisibility()
+        let tracksPointer = displayMode == .pointerScreen ||
+            (displayMode == .nearEdges && !(screenLocked && alwaysShowWhenLocked))
+        if tracksPointer && !entries.isEmpty {
+            // Read position/visibility only. No event taps, permissions, or input interception.
             timer = Timer(timeInterval: 0.08, repeats: true) { [weak self] _ in
-                Task { @MainActor in self?.updateProximity() }
+                Task { @MainActor in self?.updateVisibility() }
             }
             timer?.tolerance = 0.025
             RunLoop.main.add(timer!, forMode: .common)
@@ -112,19 +118,19 @@ final class EdgeStripView: NSView {
         return panel
     }
 
-    func updateProximity(at mouse: CGPoint = NSEvent.mouseLocation) {
-        // Any screen edge reveals all passages, including when the nearby edge has no passage.
-        let revealAll = !nearOnly || screenFrames.contains { f in
-            let edges = [CGRect(x: f.minX, y: f.minY, width: f.width, height: 0),
-                         CGRect(x: f.minX, y: f.maxY, width: f.width, height: 0),
-                         CGRect(x: f.minX, y: f.minY, width: 0, height: f.height),
-                         CGRect(x: f.maxX, y: f.minY, width: 0, height: f.height)]
-            return edges.contains { PortalGeometry.distance(mouse, to: $0) <= 110 }
-        }
-        let alpha: CGFloat = revealAll ? 1.0 : 0
+    func updateVisibility(pointer: PointerSnapshot? = nil) {
+        let snapshot = pointer ?? (displayMode == .pointerScreen ? PointerStateReader.read() :
+            PointerSnapshot(location: NSEvent.mouseLocation, isVisible: nil))
+        let visible = OverlayVisibility.visibleDisplayIDs(mode: displayMode, displays: displays, pointer: snapshot,
+                                                          screenLocked: screenLocked, alwaysShowWhenLocked: alwaysShowWhenLocked)
         for entry in entries {
+            let alpha: CGFloat = visible.contains(entry.portal.displayID) ? 1 : 0
             if entry.window.alphaValue != alpha { entry.window.alphaValue = alpha }
         }
+    }
+
+    func updateProximity(at mouse: CGPoint) {
+        updateVisibility(pointer: PointerSnapshot(location: mouse, isVisible: true))
     }
 
     func preview(model: AppModel) {
