@@ -30,15 +30,15 @@ struct SettingsView: View {
                         HStack {
                             Text("屏幕与通道").font(.headline)
                             Spacer()
-                            Text("\(model.displays.count) 块本机屏幕 · \(model.automaticCount) 处交界 · \(model.universalControlPortals.count) 段通用控制")
+                            Text("\(model.displays.count) 块本机屏幕 · \(model.universalControlPortals.count) 处通用控制入口")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                         DisplayMap(displays: model.displays, portals: model.portals)
-                            .frame(height: 160)
+                            .frame(height: model.universalControlPortals.isEmpty ? 200 : 300)
                             .background(Color.primary.opacity(0.025), in: RoundedRectangle(cornerRadius: 12))
                         HStack(spacing: 18) {
-                            Label { Text("彩虹渐变 · 扩展屏通道") } icon: { Capsule().fill(passageGradient(manual: false)).frame(width: 28, height: 5) }
-                            Label { Text("暖色渐变 · 通用控制通道") } icon: { Capsule().fill(passageGradient(manual: true)).frame(width: 28, height: 5) }
+                            Label { Text("蓝绿渐变 · 扩展屏通道") } icon: { Capsule().fill(passageGradient(manual: false)).frame(width: 28, height: 5) }
+                            Label { Text("橙红渐变 · 通用控制通道") } icon: { Capsule().fill(passageGradient(manual: true)).frame(width: 28, height: 5) }
                             Spacer()
                         }.font(.caption).foregroundStyle(.secondary)
                     }
@@ -51,8 +51,8 @@ struct SettingsView: View {
                             Text(model.universalControlStatus).font(.caption).foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
-                        Toggle("仅在鼠标靠近边缘时显示", isOn: $model.preferences.nearOnly)
-                            .help("距离通道约 110 点以内时显示。常显模式不需要轮询鼠标。")
+                        Toggle("靠近任意屏幕边缘时显示全部通道", isOn: $model.preferences.nearOnly)
+                            .help("靠近任意屏幕的任意边缘约 110 点时，全部提示线一起显示；离开所有边缘后一起隐藏。")
                         HStack {
                             Text("线条粗细").frame(width: 76, alignment: .leading)
                             Slider(value: $model.preferences.thickness, in: 2...8, step: 1)
@@ -100,7 +100,7 @@ struct SettingsView: View {
                 Image(systemName: "cursorarrow").foregroundStyle(mint)
                 Text("提示线可穿透点击；键鼠共享由系统通用控制完成。")
                 Spacer()
-                Text("1.1.0").monospacedDigit()
+                Text("1.2.0").monospacedDigit()
             }.font(.caption).foregroundStyle(.secondary).padding(.horizontal, 24).padding(.vertical, 13)
         }
         .frame(minWidth: 660, idealWidth: 720, minHeight: 650)
@@ -148,31 +148,56 @@ struct MarkerEditor: View {
 struct DisplayMap: View {
     let displays: [DisplayInfo]
     let portals: [Portal]
+    private let remoteColor = Color(red: 0.91, green: 0.35, blue: 0.08)
+
     var body: some View {
+        let hints = DisplayMapGeometry.remoteHints(displays: displays, portals: portals)
         GeometryReader { geometry in
-            let union = displays.reduce(CGRect.null) { $0.union($1.frame) }
+            let union = (displays.map(\.frame) + hints.map(\.frame)).reduce(CGRect.null) { $0.union($1) }
             if !union.isNull && union.width > 0 && union.height > 0 {
-                let scale = min((geometry.size.width - 56) / union.width, (geometry.size.height - 42) / union.height)
+                let scale = min((geometry.size.width - 56) / union.width, (geometry.size.height - 36) / union.height)
                 let origin = CGPoint(x: (geometry.size.width - union.width * scale) / 2,
                                      y: (geometry.size.height - union.height * scale) / 2)
+                let point: (CGPoint) -> CGPoint = { p in
+                    CGPoint(x: origin.x + (p.x - union.minX) * scale, y: origin.y + (union.maxY - p.y) * scale)
+                }
                 ZStack(alignment: .topLeading) {
+                    ForEach(hints) { hint in
+                        Path { path in
+                            path.move(to: point(hint.source)); path.addLine(to: point(hint.destination))
+                        }.stroke(remoteColor.opacity(0.65), style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+                        Image(systemName: "arrow.up.arrow.down")
+                            .font(.system(size: 10, weight: .bold)).foregroundStyle(remoteColor)
+                            .rotationEffect(.degrees(hint.source.x == hint.destination.x ? 0 : 90))
+                            .padding(3).background(Color(nsColor: .windowBackgroundColor), in: Circle())
+                            .position(point(CGPoint(x: (hint.source.x + hint.destination.x) / 2,
+                                                    y: (hint.source.y + hint.destination.y) / 2)))
+                    }
                     ForEach(displays) { display in
                         let f = display.frame
-                        let w = f.width * scale, h = f.height * scale
                         RoundedRectangle(cornerRadius: 7).fill(Color(nsColor: .windowBackgroundColor))
-                            .overlay(RoundedRectangle(cornerRadius: 7).stroke(Color.primary.opacity(0.22), lineWidth: 1))
-                            .overlay(Text(display.name).font(.system(size: 11, weight: .medium)).lineLimit(2).minimumScaleFactor(0.6).padding(8))
-                            .frame(width: w, height: h)
-                            .position(x: origin.x + (f.midX - union.minX) * scale,
-                                      y: origin.y + (union.maxY - f.midY) * scale)
+                            .overlay(RoundedRectangle(cornerRadius: 7).stroke(Color.primary.opacity(0.25), lineWidth: 1))
+                            .overlay(Text(display.name).font(.system(size: 11, weight: .medium)).lineLimit(2).minimumScaleFactor(0.7).padding(8))
+                            .frame(width: f.width * scale, height: f.height * scale)
+                            .position(point(CGPoint(x: f.midX, y: f.midY)))
+                    }
+                    ForEach(hints) { hint in
+                        RoundedRectangle(cornerRadius: 7).fill(remoteColor.opacity(0.07))
+                            .overlay(RoundedRectangle(cornerRadius: 7).stroke(remoteColor.opacity(0.65), style: StrokeStyle(lineWidth: 1.5, dash: [5, 3])))
+                            .overlay(VStack(spacing: 4) {
+                                Text("通用控制对端").font(.system(size: 11, weight: .semibold)).foregroundStyle(remoteColor)
+                                Text("示意 · 非实际比例").font(.system(size: 9)).foregroundStyle(.secondary)
+                            }.lineLimit(1).minimumScaleFactor(0.7).padding(6))
+                            .frame(width: hint.frame.width * scale, height: hint.frame.height * scale)
+                            .position(point(CGPoint(x: hint.frame.midX, y: hint.frame.midY)))
+                            .help("这里表示该通道通向的另一台 Mac 或 iPad；远端屏幕尺寸和设备名称尚未读取。")
                     }
                     ForEach(portals) { portal in
                         if let display = displays.first(where: { $0.id == portal.displayID }) {
-                            let rect = portal.rect(on: display, thickness: 3 / scale)
+                            let rect = portal.rect(on: display, thickness: 4 / scale)
                             RoundedRectangle(cornerRadius: 2).fill(passageGradient(manual: portal.usesWarmPalette, vertical: portal.edge.vertical))
-                                .frame(width: max(3, rect.width * scale), height: max(3, rect.height * scale))
-                                .position(x: origin.x + (rect.midX - union.minX) * scale,
-                                          y: origin.y + (union.maxY - rect.midY) * scale)
+                                .frame(width: max(4, rect.width * scale), height: max(4, rect.height * scale))
+                                .position(point(CGPoint(x: rect.midX, y: rect.midY)))
                                 .help("\(portal.edge.title) → \(portal.label)")
                         }
                     }
@@ -181,6 +206,6 @@ struct DisplayMap: View {
                 Text("等待系统显示器信息…").foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }.accessibilityElement(children: .ignore)
-            .accessibilityLabel("屏幕排列预览，\(displays.count) 块本机屏幕，\(portals.count) 段边缘标记")
+            .accessibilityLabel("屏幕排列预览，\(displays.count) 块本机屏幕，\(hints.count) 处通用控制对端示意，\(portals.count) 段边缘标记")
     }
 }

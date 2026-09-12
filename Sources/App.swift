@@ -57,7 +57,7 @@ import SwiftUI
         title.isEnabled = false; menu.addItem(title)
         let toggle = NSMenuItem(title: "显示边缘", action: #selector(toggleEnabled), keyEquivalent: "")
         toggle.target = self; toggle.state = model.preferences.enabled ? .on : .off; menu.addItem(toggle)
-        let near = NSMenuItem(title: "仅靠近时显示", action: #selector(toggleNear), keyEquivalent: "")
+        let near = NSMenuItem(title: "靠近边缘显示全部通道", action: #selector(toggleNear), keyEquivalent: "")
         near.target = self; near.state = model.preferences.nearOnly ? .on : .off; menu.addItem(near)
         let uc = NSMenuItem(title: "自动识别通用控制", action: #selector(toggleUC), keyEquivalent: "")
         uc.target = self; uc.state = model.preferences.automaticUniversalControl ? .on : .off; menu.addItem(uc)
@@ -117,6 +117,7 @@ import SwiftUI
                 self.model.applyUniversalControlResponse(dictionaries, error: nil)
                 let entries = self.overlays.entries.filter { $0.portal.universalControl }
                 precondition(entries.count == portals.count)
+                precondition(DisplayMapGeometry.remoteHints(displays: self.model.displays, portals: portals).count == portals.count)
                 for entry in entries {
                     precondition(entry.window.frame == entry.frame)
                     precondition(entry.window.ignoresMouseEvents && !entry.window.canBecomeKey)
@@ -200,9 +201,18 @@ import SwiftUI
         precondition(abs(overlays.entries[0].window.frame.maxY - screen.frame.maxY) < 0.5)
         model.preferences.nearOnly = true
         precondition(overlays.entries.count == 1)
-        model.removeMarker(model.preferences.markers[0].id)
+        model.preferences.markers = [ManualMarker(displayID: screen.id, edge: .left, start: 0.25, end: 0.75),
+                                     ManualMarker(displayID: screen.id, edge: .right, start: 0.25, end: 0.75)]
+        precondition(overlays.entries.count == 2)
+        overlays.updateProximity(at: CGPoint(x: screen.frame.minX + 20, y: screen.frame.midY))
+        precondition(overlays.entries.allSatisfy { $0.window.alphaValue == 1 }, "near one passage reveals all passages")
+        overlays.updateProximity(at: CGPoint(x: screen.frame.midX, y: screen.frame.maxY - 20))
+        precondition(overlays.entries.allSatisfy { $0.window.alphaValue == 1 }, "a screen edge without a passage also reveals all passages")
+        overlays.updateProximity(at: CGPoint(x: screen.frame.midX, y: screen.frame.midY))
+        precondition(overlays.entries.allSatisfy { $0.window.alphaValue == 0 }, "moving into screen center hides all passages together")
+        model.preferences.markers = []
         precondition(overlays.entries.isEmpty)
-        print("PASS: overlay creation, bounds, click-through, nonactivation, Spaces flags, enable/disable, edge edits, proximity mode, deletion; \(model.displays.count) local screen(s)")
+        print("PASS: overlay bounds, click-through, nonactivation, Spaces, switches, edits, deletion; near any screen edge reveals all passages, screen center hides all; \(model.displays.count) local screen(s)")
         NSApp.terminate(nil)
     }
 }

@@ -112,6 +112,30 @@ import CoreGraphics
         let abovePortal = UCEdgeValue(dictionary: ucData("top", [760, -900, 940, 1]))?.portal(displays: [ucAbove])
         expect(abovePortal?.rect(on: ucAbove, thickness: 3) == CGRect(x: 760, y: 1797, width: 940, height: 3), "UC above external display regression: negative global y and shifted x")
 
+        let hints = DisplayMapGeometry.remoteHints(displays: [main, ucAbove], portals: [abovePortal!])
+        expect(hints.count == 1, "map includes UC destination in addition to the two real screens")
+        expect(hints[0].frame.minY > ucAbove.frame.maxY, "UC destination appears beyond the correct external screen edge")
+        expect(hints[0].source == CGPoint(x: 1230, y: 1800), "diagram connection starts at actual passage midpoint")
+        expect(DisplayMapGeometry.remoteHints(displays: [main], portals: pair).isEmpty, "ordinary extension passages do not create fictional remote screens")
+        expect(DisplayMapGeometry.remoteHints(displays: [main], portals: [abovePortal!]).isEmpty, "missing local display removes its remote hint")
+        expect(DisplayMapGeometry.remoteHints(displays: [main], portals: []).isEmpty, "empty UC snapshot removes destination hints")
+        for edge in Edge.allCases {
+            let portal = Portal(id: "hint-\(edge.rawValue)", displayID: main.id, edge: edge,
+                                start: 250, end: 650, label: "Synthetic", manual: false, universalControl: true)
+            let hint = DisplayMapGeometry.remoteHints(displays: [main], portals: [portal])[0]
+            expect(!hint.frame.intersects(main.frame), "remote diagram does not overlap actual screen for \(edge)")
+            switch edge {
+            case .left: expect(hint.frame.maxX < main.frame.minX, "left destination")
+            case .right: expect(hint.frame.minX > main.frame.maxX, "right destination")
+            case .top: expect(hint.frame.minY > main.frame.maxY, "top destination")
+            case .bottom: expect(hint.frame.maxY < main.frame.minY, "bottom destination")
+            }
+        }
+        let collisionHints = DisplayMapGeometry.remoteHints(displays: [main, ucAbove], portals: [abovePortal!,
+            Portal(id: "second-remote", displayID: ucAbove.id, edge: .top, start: 1000, end: 1500,
+                   label: "Synthetic", manual: false, universalControl: true)])
+        expect(collisionHints.count == 2 && !collisionHints[0].frame.intersects(collisionHints[1].frame), "multiple destination hints remain separately visible")
+
         let legacy: [String: Any] = ["enabled": false, "automatic": false, "nearOnly": true, "thickness": 3,
                                      "markers": [try JSONSerialization.jsonObject(with: data)]]
         let migrated = try JSONDecoder().decode(Preferences.self, from: JSONSerialization.data(withJSONObject: legacy))

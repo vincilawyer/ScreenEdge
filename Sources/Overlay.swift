@@ -40,6 +40,7 @@ final class EdgeStripView: NSView {
     private(set) var entries: [Entry] = []
     private var timer: Timer?
     private var nearOnly = false
+    private var screenFrames: [CGRect] = []
     private var previewWindows: [EdgePanel] = []
     private var previewTask: DispatchWorkItem?
 
@@ -50,6 +51,7 @@ final class EdgeStripView: NSView {
         entries.forEach { $0.window.close() }; entries.removeAll()
         guard model.preferences.enabled else { return }
         nearOnly = model.preferences.nearOnly
+        screenFrames = model.displays.map(\.frame)
         for portal in model.portals {
             guard let screen = model.displays.first(where: { $0.id == portal.displayID }) else { continue }
             let rect = portal.rect(on: screen, thickness: model.preferences.thickness).integral
@@ -88,12 +90,17 @@ final class EdgeStripView: NSView {
         return panel
     }
 
-    private func updateProximity() {
-        let mouse = NSEvent.mouseLocation
+    func updateProximity(at mouse: CGPoint = NSEvent.mouseLocation) {
+        // Any screen edge reveals all passages, including when the nearby edge has no passage.
+        let revealAll = screenFrames.contains { f in
+            let edges = [CGRect(x: f.minX, y: f.minY, width: f.width, height: 0),
+                         CGRect(x: f.minX, y: f.maxY, width: f.width, height: 0),
+                         CGRect(x: f.minX, y: f.minY, width: 0, height: f.height),
+                         CGRect(x: f.maxX, y: f.minY, width: 0, height: f.height)]
+            return edges.contains { PortalGeometry.distance(mouse, to: $0) <= 110 }
+        }
+        let alpha: CGFloat = revealAll ? 1.0 : 0
         for entry in entries {
-            // The counterpart line lights too when its edge is adjacent.
-            let distance = PortalGeometry.distance(mouse, to: entry.frame)
-            let alpha: CGFloat = distance <= 110 ? 1.0 : 0
             if entry.window.alphaValue != alpha { entry.window.alphaValue = alpha }
         }
     }

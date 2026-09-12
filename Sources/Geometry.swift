@@ -107,12 +107,12 @@ enum PortalGeometry {
 enum PortalPalette {
     // Same ordered stops on both ends of a passage, independent of screen size or scale.
     static let automatic: [[CGFloat]] = [
-        [1.00, 0.38, 0.25, 1], [1.00, 0.76, 0.16, 1], [0.17, 0.85, 0.50, 1],
-        [0.12, 0.72, 1.00, 1], [0.45, 0.37, 0.98, 1], [0.94, 0.30, 0.72, 1]
+        [0.10, 0.86, 0.65, 1], [0.04, 0.82, 0.82, 1], [0.05, 0.67, 1.00, 1],
+        [0.16, 0.46, 1.00, 1], [0.30, 0.28, 0.92, 1]
     ]
     static let manual: [[CGFloat]] = [
-        [1.00, 0.73, 0.22, 1], [1.00, 0.43, 0.25, 1], [0.96, 0.28, 0.54, 1],
-        [0.64, 0.35, 0.94, 1], [0.30, 0.62, 1.00, 1]
+        [1.00, 0.78, 0.08, 1], [1.00, 0.60, 0.04, 1], [1.00, 0.39, 0.06, 1],
+        [0.98, 0.22, 0.13, 1], [0.88, 0.10, 0.26, 1]
     ]
     static func stops(manual: Bool) -> [[CGFloat]] { manual ? self.manual : automatic }
 }
