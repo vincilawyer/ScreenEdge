@@ -181,6 +181,38 @@ import CoreGraphics
         expect(try JSONDecoder().decode(Preferences.self, from: Data("{\"nearOnly\":true,\"displayMode\":\"futureMode\"}".utf8)).displayMode == .nearEdges,
                "unknown mode falls back to legacy setting without discarding preferences")
 
+        expect(migrated.extendedAppearance == .legacyExtended && migrated.universalAppearance == .legacyUniversal,
+               "upgrades retain the original two gradient palettes")
+        expect(Preferences().extendedAppearance == .softExtended && Preferences().universalAppearance == .softUniversal,
+               "fresh installations use the softer independent glass styles")
+        var styled = migrated
+        styled.extendedAppearance = EdgeAppearance(material: .solid, color: .mint, opacity: 0.45)
+        styled.universalAppearance = EdgeAppearance(material: .gradient, gradient: .custom,
+            gradientStart: .rose, gradientEnd: .blue, opacity: 0.7)
+        let restoredStyle = try JSONDecoder().decode(Preferences.self, from: JSONEncoder().encode(styled))
+        expect(restoredStyle.extendedAppearance == styled.extendedAppearance && restoredStyle.universalAppearance == styled.universalAppearance,
+               "independent channel colors, custom gradient and opacity survive restart")
+        expect(restoredStyle.markers == migrated.markers && restoredStyle.thickness == migrated.thickness && restoredStyle.displayMode == migrated.displayMode,
+               "saving appearances preserves markers, width and visibility mode")
+        expect(styled.appearance(for: ucTop) == styled.universalAppearance && styled.appearance(for: pair[0]) == styled.extendedAppearance,
+               "automatic UC and extension passages select their respective styles")
+        expect(styled.appearance(for: Portal(id: "manual-style", displayID: main.id, edge: .left, start: 0, end: 200, label: "Synthetic", manual: true)) == styled.universalAppearance,
+               "manual markers retain the UC style association")
+        expect(styled.extendedAppearance.colors == [.mint, .mint] && styled.universalAppearance.colors == [.rose, .blue],
+               "solid and custom gradient colors reach the renderer without preset substitution")
+        for preset in EdgeGradient.allCases where preset != .custom {
+            let style = EdgeAppearance(material: .gradient, gradient: preset)
+            expect(style.colors.count >= 2 && style.colors.first != style.colors.last, "gradient preset has distinct endpoints: \(preset)")
+        }
+        let damagedStyle = try JSONDecoder().decode(Preferences.self, from: Data("{\"thickness\":7,\"displayMode\":\"pointerScreen\",\"extendedAppearance\":\"bad\",\"universalAppearance\":{\"material\":\"future\",\"color\":null,\"opacity\":10}}".utf8))
+        expect(damagedStyle.thickness == 7 && damagedStyle.displayMode == .pointerScreen && damagedStyle.extendedAppearance == .legacyExtended,
+               "invalid appearance does not reset unrelated user preferences")
+        expect(damagedStyle.universalAppearance.material == .glass && damagedStyle.universalAppearance.opacity == 1,
+               "unknown material and out-of-range opacity have safe fallbacks")
+        expect(EdgeColor(-1, 2, .nan) == EdgeColor(0, 1, 0.5), "invalid color channels cannot escape sRGB bounds")
+        expect(EdgeAppearance(opacity: -1).effectiveOpacity == 0.15 && EdgeAppearance(opacity: .nan).effectiveOpacity == 0.8,
+               "invalid runtime opacity cannot hide a configured edge completely")
+
         func visible(_ point: CGPoint, cursor: Bool? = true, mode: EdgeDisplayMode = .pointerScreen,
                      screens: [DisplayInfo] = [main, right], locked: Bool = false, lockAlways: Bool = true) -> Set<String> {
             OverlayVisibility.visibleDisplayIDs(mode: mode, displays: screens,

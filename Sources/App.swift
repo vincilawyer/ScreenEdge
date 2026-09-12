@@ -55,7 +55,7 @@ import CoreServices
         let launchedAtLogin = event?.eventID == kAEOpenApplication &&
             event?.paramDescriptor(forKeyword: keyAEPropData)?.enumCodeValue == keyAELaunchedAsLogInItem
         // A manual cold launch must remain a settings entry point when the icon is hidden.
-        if firstLaunch || CommandLine.arguments.contains("--settings") || smokeTest ||
+        if firstLaunch || CommandLine.arguments.contains("--settings") || CommandLine.arguments.contains("--styles") || smokeTest ||
             (!model.preferences.showMenuBarIcon && !launchedAtLogin) { showSettings() }
         if !smokeTest { UserDefaults.standard.set(true, forKey: "screenEdge.didLaunch") }
         if CommandLine.arguments.contains("--settings-snapshots") {
@@ -114,7 +114,7 @@ import CoreServices
     @objc func quit() { NSApp.terminate(nil) }
     @objc func showSettings() {
         if window == nil {
-            let controller = NSHostingController(rootView: SettingsView(model: model))
+            let controller = NSHostingController(rootView: SettingsView(model: model, initialPage: CommandLine.arguments.contains("--styles") ? .styles : .appearance))
             let w = NSWindow(contentViewController: controller)
             w.title = "跨屏边缘"
             w.styleMask = [.titled, .closable, .miniaturizable, .resizable]
@@ -154,6 +154,7 @@ import CoreServices
                     precondition(entry.window.frame == entry.frame)
                     precondition(entry.window.ignoresMouseEvents && !entry.window.canBecomeKey)
                     precondition((entry.window.contentView as? EdgeStripView)?.manual == true)
+                    precondition((entry.window.contentView as? EdgeStripView)?.edgeAppearance == self.model.preferences.universalAppearance)
                     precondition(entry.window.isVisible && entry.window.alphaValue == 1)
                 }
                 self.model.applyUniversalControlResponse([], error: nil)
@@ -164,9 +165,9 @@ import CoreServices
                 self.model.applyUniversalControlResponse(dictionaries, error: nil)
                 self.model.preferences.automaticUniversalControl = false
                 precondition(self.overlays.entries.allSatisfy { !$0.portal.universalControl })
-                print("PASS: read-only Universal Control query, \(raw.count) active edge(s), mapped and rendered as click-through warm gradients; empty/error/disable responses remove UC overlays")
+                print("PASS: read-only Universal Control query, \(raw.count) active edge(s), mapped and rendered with the configured UC appearance; empty/error/disable responses remove UC overlays")
                 for portal in portals {
-                    print("edge=\(portal.edge.rawValue) start=\(portal.start) end=\(portal.end) warmGradient=\(portal.usesWarmPalette)")
+                    print("edge=\(portal.edge.rawValue) start=\(portal.start) end=\(portal.end)")
                 }
                 NSApp.terminate(nil)
             }
@@ -214,6 +215,7 @@ import CoreServices
             }
         }
         print("PASS: actual display geometry has \(realPortals.count / 2) passage(s), \(matchedSamples) corresponding gradient samples; both gradient palettes match across 400/800-point lengths in both orientations")
+        runAppearanceChecks()
         model.preferences.automatic = false
         model.preferences.nearOnly = false
         model.preferences.markers = [ManualMarker(displayID: screen.id, label: "测试标记")]
@@ -248,6 +250,7 @@ import CoreServices
         }
         precondition(overlays.entries.count == 2)
         precondition(overlays.entries.allSatisfy { $0.window.canBecomeVisibleWithoutLogin && $0.window.ignoresMouseEvents && !$0.window.canBecomeKey })
+        precondition(overlays.entries.allSatisfy { ($0.window.contentView as? EdgeStripView)?.edgeAppearance == model.preferences.universalAppearance }, "lock-screen rebuild preserves the configured style")
         precondition(window?.canBecomeVisibleWithoutLogin == false, "settings window stays off the lock screen")
         overlays.updateProximity(at: CGPoint(x: screen.frame.midX, y: screen.frame.midY))
         precondition(overlays.entries.allSatisfy { $0.window.alphaValue == 1 }, "lock-screen always-visible setting overrides desktop proximity")

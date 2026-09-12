@@ -1,18 +1,14 @@
 import SwiftUI
 
-func passageGradient(manual: Bool, vertical: Bool = false) -> LinearGradient {
-    let colors = PortalPalette.stops(manual: manual).map { Color(.sRGB, red: Double($0[0]), green: Double($0[1]), blue: Double($0[2]), opacity: 1) }
-    return LinearGradient(colors: colors, startPoint: vertical ? .top : .leading, endPoint: vertical ? .bottom : .trailing)
-}
-
-let mint = Color(red: 0.12, green: 0.64, blue: 0.51)
+let settingsAccent = Color.accentColor
 
 enum SettingsPage: String, CaseIterable, Identifiable {
-    case appearance, channels, markers, general
+    case appearance, styles, channels, markers, general
     var id: String { rawValue }
     var title: String {
         switch self {
         case .appearance: return "边缘显示"
+        case .styles: return "颜色与材质"
         case .channels: return "屏幕与通道"
         case .markers: return "手动标记"
         case .general: return "锁屏与启动"
@@ -21,6 +17,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .appearance: return "cursorarrow"
+        case .styles: return "paintpalette"
         case .channels: return "display.2"
         case .markers: return "slider.horizontal.3"
         case .general: return "lock"
@@ -29,6 +26,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
     var subtitle: String {
         switch self {
         case .appearance: return "选择边缘出现的时机，调整线条样式。"
+        case .styles: return "为扩展屏和通用控制，分别搭配喜欢的外观。"
         case .channels: return "查看屏幕排列与可以跨越的通道。"
         case .markers: return "为需要额外提示的位置补充标记。"
         case .general: return "设置锁屏行为与应用启动方式。"
@@ -84,8 +82,8 @@ struct SettingsView: View {
     private var header: some View {
         HStack(spacing: 12) {
             Image(systemName: "rectangle.split.2x1")
-                .font(.system(size: 22, weight: .medium)).foregroundStyle(mint)
-                .frame(width: 42, height: 42).background(mint.opacity(0.10), in: RoundedRectangle(cornerRadius: 11))
+                .font(.system(size: 22, weight: .medium)).foregroundStyle(settingsAccent)
+                .frame(width: 42, height: 42).background(settingsAccent.opacity(0.10), in: RoundedRectangle(cornerRadius: 11))
             VStack(alignment: .leading, spacing: 3) {
                 Text("跨屏边缘").font(.system(size: 17, weight: .semibold))
                 Text("让跨屏通道一目了然").font(.system(size: 11)).foregroundStyle(.secondary)
@@ -104,9 +102,9 @@ struct SettingsView: View {
                         Image(systemName: item.icon).font(.system(size: 14)).frame(width: 20)
                         Text(item.title).font(.system(size: 13, weight: page == item ? .semibold : .regular))
                         Spacer(minLength: 0)
-                    }.foregroundStyle(page == item ? mint : Color.primary)
+                    }.foregroundStyle(page == item ? settingsAccent : Color.primary)
                         .padding(.horizontal, 12).frame(height: 38)
-                        .background(page == item ? mint.opacity(0.11) : .clear, in: RoundedRectangle(cornerRadius: 8))
+                        .background(page == item ? settingsAccent.opacity(0.11) : .clear, in: RoundedRectangle(cornerRadius: 8))
                         .contentShape(Rectangle())
                 }.buttonStyle(.plain).accessibilityIdentifier("settingsPage-\(item.rawValue)")
                     .accessibilityValue(page == item ? "已选中" : "")
@@ -123,6 +121,7 @@ struct SettingsView: View {
     @ViewBuilder private var pageContent: some View {
         switch page {
         case .appearance: AppearanceSettings(model: model)
+        case .styles: StyleSettings(model: model)
         case .channels: ChannelSettings(model: model)
         case .markers: ManualSettings(model: model)
         case .general: GeneralSettings(model: model)
@@ -178,7 +177,8 @@ struct MarkerEditor: View {
 struct DisplayMap: View {
     let displays: [DisplayInfo]
     let portals: [Portal]
-    private let remoteColor = Color(red: 0.91, green: 0.35, blue: 0.08)
+    let preferences: Preferences
+    private let remoteColor = Color.accentColor
 
     var body: some View {
         let hints = DisplayMapGeometry.remoteHints(displays: displays, portals: portals)
@@ -225,7 +225,7 @@ struct DisplayMap: View {
                     ForEach(portals) { portal in
                         if let display = displays.first(where: { $0.id == portal.displayID }) {
                             let rect = portal.rect(on: display, thickness: 4 / scale)
-                            RoundedRectangle(cornerRadius: 2).fill(passageGradient(manual: portal.usesWarmPalette, vertical: portal.edge.vertical))
+                            StyleStripSample(appearance: preferences.appearance(for: portal), vertical: portal.edge.vertical)
                                 .frame(width: max(4, rect.width * scale), height: max(4, rect.height * scale))
                                 .position(point(CGPoint(x: rect.midX, y: rect.midY)))
                                 .help("\(portal.edge.title) → \(portal.label)")

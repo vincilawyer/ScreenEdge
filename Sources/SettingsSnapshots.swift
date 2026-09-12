@@ -23,6 +23,13 @@ extension AppDelegate {
             for page in SettingsPage.allCases {
                 try await snapshot(page, name: page.rawValue, size: NSSize(width: 820, height: 720), window: window, directory: directory)
             }
+            try await snapshot(.styles, name: "styles-minimum", size: NSSize(width: 760, height: 610), window: window, directory: directory)
+            try await snapshot(.styles, name: "styles-minimum-bottom", size: NSSize(width: 760, height: 610), window: window, directory: directory, scrollToBottom: true)
+            model.preferences.extendedAppearance = EdgeAppearance(material: .solid, color: .lavender, opacity: 0.7)
+            try await snapshot(.styles, name: "styles-solid", size: NSSize(width: 820, height: 720), window: window, directory: directory)
+            model.preferences.extendedAppearance = EdgeAppearance(material: .gradient, gradient: .custom, gradientStart: .rose, gradientEnd: .blue, opacity: 0.8)
+            try await snapshot(.styles, name: "styles-gradient", size: NSSize(width: 820, height: 720), window: window, directory: directory)
+            try await snapshot(.styles, name: "styles-gradient-minimum-bottom", size: NSSize(width: 760, height: 610), window: window, directory: directory, scrollToBottom: true)
             try await snapshot(.appearance, name: "appearance-minimum", size: NSSize(width: 760, height: 610), window: window, directory: directory)
             try await snapshot(.appearance, name: "appearance-minimum-bottom", size: NSSize(width: 760, height: 610), window: window, directory: directory, scrollToBottom: true)
             try await snapshot(.general, name: "general-minimum", size: NSSize(width: 760, height: 610), window: window, directory: directory)
@@ -30,7 +37,10 @@ extension AppDelegate {
             try await snapshot(.markers, name: "marker-editor-minimum", size: NSSize(width: 760, height: 610), window: window, directory: directory)
             NSApp.appearance = NSAppearance(named: .darkAqua)
             try await snapshot(.appearance, name: "appearance-dark", size: NSSize(width: 820, height: 720), window: window, directory: directory)
-            print("PASS: rendered 9 settings snapshots from ephemeral settings, including minimum size, scrolling and dark mode")
+            try await snapshot(.styles, name: "styles-gradient-dark", size: NSSize(width: 820, height: 720), window: window, directory: directory)
+            model.preferences.extendedAppearance = .softExtended
+            try await snapshot(.styles, name: "styles-glass-dark", size: NSSize(width: 820, height: 720), window: window, directory: directory)
+            print("PASS: rendered 17 settings snapshots from ephemeral settings, including materials, minimum size, scrolling and dark mode")
             NSApp.terminate(nil)
         } catch {
             fputs("FAIL: settings snapshot: \(error.localizedDescription)\n", stderr); exit(1)

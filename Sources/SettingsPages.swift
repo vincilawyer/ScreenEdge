@@ -51,7 +51,7 @@ struct AppearanceSettings: View {
                     Button { model.preferences.displayMode = mode } label: {
                         HStack(spacing: 13) {
                             Image(systemName: model.preferences.displayMode == mode ? "largecircle.fill.circle" : "circle")
-                                .font(.system(size: 18)).foregroundStyle(model.preferences.displayMode == mode ? mint : Color.secondary)
+                                .font(.system(size: 18)).foregroundStyle(model.preferences.displayMode == mode ? settingsAccent : Color.secondary)
                             VStack(alignment: .leading, spacing: 5) {
                                 Text(mode.title).font(.system(size: 13, weight: .medium)).foregroundStyle(.primary)
                                 Text(detail(mode)).font(.system(size: 11)).foregroundStyle(.secondary)
@@ -59,7 +59,7 @@ struct AppearanceSettings: View {
                             }
                             Spacer(minLength: 0)
                         }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
-                            .background(model.preferences.displayMode == mode ? mint.opacity(0.06) : .clear)
+                            .background(model.preferences.displayMode == mode ? settingsAccent.opacity(0.06) : .clear)
                             .contentShape(Rectangle())
                     }.buttonStyle(.plain).accessibilityIdentifier("displayMode-\(mode.rawValue)")
                         .accessibilityValue(model.preferences.displayMode == mode ? "已选中" : "未选中")
@@ -84,11 +84,11 @@ struct AppearanceSettings: View {
                         Text("粗").font(.caption).foregroundStyle(.secondary)
                     }
                     HStack(spacing: 14) {
-                        Capsule().fill(passageGradient(manual: false)).frame(height: model.preferences.thickness)
-                        Capsule().fill(passageGradient(manual: true)).frame(height: model.preferences.thickness)
+                        StyleStripSample(appearance: model.preferences.extendedAppearance).frame(height: model.preferences.thickness)
+                        StyleStripSample(appearance: model.preferences.universalAppearance).frame(height: model.preferences.thickness)
                     }.frame(height: 12).accessibilityLabel("扩展屏与通用控制线条样式")
                     HStack {
-                        Text("在各屏幕上临时显示示例线").font(.system(size: 11)).foregroundStyle(.secondary)
+                        Text("配色与透明度可在“颜色与材质”中调整").font(.system(size: 11)).foregroundStyle(.secondary)
                         Spacer()
                         Button("预览 4 秒") { model.onPreview?() }.disabled(model.screenLocked)
                     }
@@ -103,7 +103,7 @@ struct ChannelSettings: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
             SettingsCard(title: "屏幕排列") {
-                DisplayMap(displays: model.displays, portals: model.portals)
+                DisplayMap(displays: model.displays, portals: model.portals, preferences: model.preferences)
                     .frame(height: model.universalControlPortals.isEmpty ? 170 : 200)
                 Divider().padding(.horizontal, 16)
                 HStack(spacing: 20) {
@@ -127,7 +127,7 @@ struct ChannelSettings: View {
     }
     private func legend(_ title: String, warm: Bool) -> some View {
         HStack(spacing: 7) {
-            Capsule().fill(passageGradient(manual: warm)).frame(width: 24, height: 4)
+            StyleStripSample(appearance: warm ? model.preferences.universalAppearance : model.preferences.extendedAppearance).frame(width: 24, height: 4)
             Text(title).font(.system(size: 11)).foregroundStyle(.secondary)
         }
     }
@@ -146,7 +146,7 @@ struct ManualSettings: View {
             }
             if model.preferences.markers.isEmpty {
                 VStack(spacing: 12) {
-                    Image(systemName: "rectangle.dashed").font(.system(size: 34, weight: .light)).foregroundStyle(mint.opacity(0.7))
+                    Image(systemName: "rectangle.dashed").font(.system(size: 34, weight: .light)).foregroundStyle(settingsAccent.opacity(0.7))
                     Text("还没有手动标记").font(.system(size: 15, weight: .medium))
                     Text("已有通道会自动显示\n需要额外提示时，再添加一段标记")
                         .font(.system(size: 12)).foregroundStyle(.secondary).multilineTextAlignment(.center).lineSpacing(4)
@@ -170,7 +170,7 @@ struct GeneralSettings: View {
                     Divider().padding(.horizontal, 16)
                     if model.preferences.displayMode == .pointerScreen {
                         HStack(spacing: 12) {
-                            Image(systemName: "cursorarrow").foregroundStyle(mint)
+                            Image(systemName: "cursorarrow").foregroundStyle(settingsAccent)
                             Text("锁屏后仍只显示鼠标所在屏幕的通道")
                                 .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                         }.padding(16)
