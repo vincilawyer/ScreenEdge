@@ -184,7 +184,7 @@ import CoreGraphics
         expect(migrated.extendedAppearance == .legacyExtended && migrated.universalAppearance == .legacyUniversal,
                "upgrades retain the original two gradient palettes")
         expect(Preferences().extendedAppearance == .softExtended && Preferences().universalAppearance == .softUniversal,
-               "fresh installations use the softer independent glass styles")
+               "fresh installations use the softer independent solid styles")
         var styled = migrated
         styled.extendedAppearance = EdgeAppearance(material: .solid, color: .mint, opacity: 0.45)
         styled.universalAppearance = EdgeAppearance(material: .gradient, gradient: .custom,
@@ -207,11 +207,17 @@ import CoreGraphics
         let damagedStyle = try JSONDecoder().decode(Preferences.self, from: Data("{\"thickness\":7,\"displayMode\":\"pointerScreen\",\"extendedAppearance\":\"bad\",\"universalAppearance\":{\"material\":\"future\",\"color\":null,\"opacity\":10}}".utf8))
         expect(damagedStyle.thickness == 7 && damagedStyle.displayMode == .pointerScreen && damagedStyle.extendedAppearance == .legacyExtended,
                "invalid appearance does not reset unrelated user preferences")
-        expect(damagedStyle.universalAppearance.material == .glass && damagedStyle.universalAppearance.opacity == 1,
+        expect(damagedStyle.universalAppearance.material == .solid && damagedStyle.universalAppearance.opacity == 1,
                "unknown material and out-of-range opacity have safe fallbacks")
         expect(EdgeColor(-1, 2, .nan) == EdgeColor(0, 1, 0.5), "invalid color channels cannot escape sRGB bounds")
         expect(EdgeAppearance(opacity: -1).effectiveOpacity == 0.15 && EdgeAppearance(opacity: .nan).effectiveOpacity == 0.8,
                "invalid runtime opacity cannot hide a configured edge completely")
+
+        let retiredGlass = try JSONDecoder().decode(Preferences.self, from: Data("{\"thickness\":6,\"displayMode\":\"pointerScreen\",\"extendedAppearance\":{\"material\":\"glass\",\"color\":{\"red\":0.2,\"green\":0.4,\"blue\":0.7},\"opacity\":0.55}}".utf8))
+        expect(retiredGlass.extendedAppearance.material == .solid && retiredGlass.extendedAppearance.color == EdgeColor(0.2, 0.4, 0.7) && retiredGlass.extendedAppearance.opacity == 0.55 && retiredGlass.thickness == 6 && retiredGlass.displayMode == .pointerScreen,
+               "retired glass migrates to solid without losing its tint, opacity or behavior preferences")
+        expect(!String(data: try JSONEncoder().encode(retiredGlass), encoding: .utf8)!.contains("glass"),
+               "saving a migrated appearance no longer writes the retired material")
 
         func visible(_ point: CGPoint, cursor: Bool? = true, mode: EdgeDisplayMode = .pointerScreen,
                      screens: [DisplayInfo] = [main, right], locked: Bool = false, lockAlways: Bool = true) -> Set<String> {

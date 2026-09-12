@@ -36,14 +36,10 @@ extension AppDelegate {
         let solid = image(view)
         let expected = NSColor(srgbRed: EdgeColor.rose.red, green: EdgeColor.rose.green, blue: EdgeColor.rose.blue, alpha: 1)
         precondition(close(rgb(solid, 0.05, vertical: false), expected) && close(rgb(solid, 0.95, vertical: false), expected), "solid color reaches both endpoints")
-        view.updateAppearance(EdgeAppearance(material: .glass, color: .mint, opacity: 0.45), reduceTransparency: false)
-        precondition(view.usesGlass && view.materialView.blendingMode == .behindWindow && view.materialView.state == .active)
-        precondition(abs(view.alphaValue - 0.45) < 0.001 && view.hitTest(.zero) == nil, "glass opacity remains independent of pointer visibility and hit testing")
-        view.updateAppearance(view.edgeAppearance, reduceTransparency: true)
-        precondition(!view.usesGlass && view.alphaValue == 1 && rgb(image(view), 0.5, vertical: false).alphaComponent > 0.99,
-                     "reduce-transparency fallback is opaque without changing system settings")
+        view.updateAppearance(EdgeAppearance(material: .solid, color: .mint, opacity: 0.45))
+        precondition(abs(view.alphaValue - 0.45) < 0.001 && view.hitTest(.zero) == nil, "style opacity remains independent of pointer visibility and hit testing")
         view.updateAppearance(EdgeAppearance(material: .gradient, gradient: .lavender, opacity: 0.65))
-        precondition(!view.usesGlass && abs(view.alphaValue - 0.65) < 0.001, "switching away from glass removes the blur layer and restores opacity")
+        precondition(abs(view.alphaValue - 0.65) < 0.001, "switching color modes applies the selected opacity")
         guard let screen = model.displays.first, let frame = screen.quartzFrame else { preconditionFailure("no native display snapshot") }
         let original = model.preferences
         defer { model.applyUniversalControlResponse([], error: nil); model.preferences = original }
@@ -68,7 +64,7 @@ extension AppDelegate {
             overlays.updateVisibility(pointer: local)
             precondition(entry.window.alphaValue == 1 && strip.alphaValue == contentOpacity)
         }
-        print("PASS: all gradient presets and custom endpoints at two lengths/orientations; solid pixels; native glass, opacity, click-through, reduced-transparency fallback and material switching")
+        print("PASS: all gradient presets and custom endpoints at two lengths/orientations; solid pixels; opacity, click-through and color mode switching")
         print("PASS: synthetic UC overlays use each configured material and preserve opacity across pointer departure/return; not a live UC connection test")
     }
 }

@@ -31,10 +31,10 @@ struct EdgeColor: Codable, Equatable {
 }
 
 enum EdgeMaterial: String, Codable, CaseIterable, Identifiable {
-    case gradient, solid, glass
+    case gradient, solid
     var id: String { rawValue }
     var title: String {
-        switch self { case .gradient: return "渐变"; case .solid: return "纯色"; case .glass: return "毛玻璃" }
+        switch self { case .gradient: return "渐变"; case .solid: return "纯色" }
     }
 }
 
@@ -60,7 +60,7 @@ enum EdgeGradient: String, Codable, CaseIterable, Identifiable {
 }
 
 struct EdgeAppearance: Codable, Equatable {
-    var material: EdgeMaterial = .glass
+    var material: EdgeMaterial = .solid
     var gradient: EdgeGradient = .aurora
     var color: EdgeColor = .frost
     var gradientStart: EdgeColor = .blue
@@ -78,14 +78,15 @@ struct EdgeAppearance: Codable, Equatable {
     var effectiveOpacity: Double { opacity.isFinite ? min(1, max(0.15, opacity)) : 0.8 }
 
     private enum CodingKeys: String, CodingKey { case material, gradient, color, gradientStart, gradientEnd, opacity }
-    init(material: EdgeMaterial = .glass, gradient: EdgeGradient = .aurora, color: EdgeColor = .frost,
+    init(material: EdgeMaterial = .solid, gradient: EdgeGradient = .aurora, color: EdgeColor = .frost,
          gradientStart: EdgeColor = .blue, gradientEnd: EdgeColor = .lavender, opacity: Double = 0.8) {
         self.material = material; self.gradient = gradient; self.color = color
         self.gradientStart = gradientStart; self.gradientEnd = gradientEnd; self.opacity = opacity
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        material = (try c.decodeIfPresent(String.self, forKey: .material)).flatMap(EdgeMaterial.init(rawValue:)) ?? .glass
+        // Retired "glass" values migrate to the same color and opacity in solid mode.
+        material = (try c.decodeIfPresent(String.self, forKey: .material)).flatMap(EdgeMaterial.init(rawValue:)) ?? .solid
         gradient = (try c.decodeIfPresent(String.self, forKey: .gradient)).flatMap(EdgeGradient.init(rawValue:)) ?? .aurora
         color = (try? c.decode(EdgeColor.self, forKey: .color)) ?? .frost
         gradientStart = (try? c.decode(EdgeColor.self, forKey: .gradientStart)) ?? .blue

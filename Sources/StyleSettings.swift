@@ -24,7 +24,7 @@ struct StyleSettings: View {
                 previewCard(.extended, style: model.preferences.extendedAppearance)
                 previewCard(.universal, style: model.preferences.universalAppearance)
             }
-            StyleEditor(title: target.title + "外观", appearance: selection).id(target)
+            StyleEditor(title: target.title + "外观", appearance: selection, thickness: $model.preferences.thickness).id(target)
             HStack(spacing: 16) {
                 Button("恢复此类默认外观") {
                     selection.wrappedValue = target == .extended ? .softExtended : .softUniversal
@@ -65,13 +65,14 @@ struct StyleSettings: View {
 struct StyleEditor: View {
     let title: String
     @Binding var appearance: EdgeAppearance
+    @Binding var thickness: Double
     private func colorBinding(_ keyPath: WritableKeyPath<EdgeAppearance, EdgeColor>) -> Binding<EdgeColor> {
         Binding(get: { appearance[keyPath: keyPath] }, set: { appearance[keyPath: keyPath] = $0 })
     }
     var body: some View {
         SettingsCard(title: title) {
             VStack(alignment: .leading, spacing: 12) {
-                Picker("材质", selection: $appearance.material) {
+                Picker("配色", selection: $appearance.material) {
                     ForEach(EdgeMaterial.allCases) { material in Text(material.title).tag(material) }
                 }.pickerStyle(.segmented).accessibilityIdentifier("edgeMaterial")
                 if appearance.material == .gradient {
@@ -87,14 +88,22 @@ struct StyleEditor: View {
                     colorChoices
                 }
                 Divider()
-                HStack {
-                    Text("不透明度").font(.system(size: 12, weight: .medium))
-                    Spacer()
-                    Text("\(Int((appearance.effectiveOpacity * 100).rounded()))%").font(.system(size: 12)).monospacedDigit().foregroundStyle(.secondary)
+                HStack(spacing: 12) {
+                    Text("粗细（共用）").font(.system(size: 12)).frame(width: 80, alignment: .leading)
+                    Slider(value: Binding(get: { thickness }, set: { thickness = $0.rounded() }), in: 2...8)
+                        .accessibilityLabel("线条粗细，两类通道共用")
+                        .help("扩展屏和通用控制共用这一粗细")
+                    Text("\(Int(thickness)) 点").font(.system(size: 12)).monospacedDigit()
+                        .foregroundStyle(.secondary).frame(width: 40, alignment: .trailing)
                 }
-                Slider(value: Binding(get: { appearance.effectiveOpacity }, set: { appearance.opacity = ($0 * 20).rounded() / 20 }), in: 0.15...1)
-                    .accessibilityLabel("边缘不透明度")
-                Text(appearance.material == .glass ? "轻透磨砂，随背景呈现细微变化。开启系统“减少透明度”时，会使用清晰的实色材质。" : "降低不透明度，让提示线更轻盈。颜色和材质会立即应用到对应通道。")
+                HStack(spacing: 12) {
+                    Text("不透明度").font(.system(size: 12)).frame(width: 80, alignment: .leading)
+                    Slider(value: Binding(get: { appearance.effectiveOpacity }, set: { appearance.opacity = ($0 * 20).rounded() / 20 }), in: 0.15...1)
+                        .accessibilityLabel("边缘不透明度")
+                    Text("\(Int((appearance.effectiveOpacity * 100).rounded()))%").font(.system(size: 12)).monospacedDigit()
+                        .foregroundStyle(.secondary).frame(width: 40, alignment: .trailing)
+                }
+                Text("粗细同时应用于两类通道；颜色和不透明度分别保存，调整后立即生效。")
                     .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }.padding(16)
         }
@@ -139,7 +148,7 @@ struct StyleStripSample: NSViewRepresentable {
     let appearance: EdgeAppearance
     var vertical = false
     func makeNSView(context: Context) -> EdgeStripView {
-        EdgeStripView(frame: .zero, appearance: appearance, vertical: vertical, blendingMode: .withinWindow)
+        EdgeStripView(frame: .zero, appearance: appearance, vertical: vertical)
     }
     func updateNSView(_ view: EdgeStripView, context: Context) { view.updateAppearance(appearance) }
 }
@@ -154,7 +163,7 @@ struct StyleDesktopPreview: NSViewRepresentable {
 }
 
 final class StyleDesktopView: NSView {
-    let strip = EdgeStripView(frame: .zero, appearance: .softExtended, vertical: false, blendingMode: .withinWindow)
+    let strip = EdgeStripView(frame: .zero, appearance: .softExtended, vertical: false)
     var thickness: Double = 4
     override init(frame: NSRect) {
         super.init(frame: frame)

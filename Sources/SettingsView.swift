@@ -8,7 +8,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .appearance: return "边缘显示"
-        case .styles: return "颜色与材质"
+        case .styles: return "边缘样式"
         case .channels: return "屏幕与通道"
         case .markers: return "手动标记"
         case .general: return "锁屏与启动"
@@ -25,8 +25,8 @@ enum SettingsPage: String, CaseIterable, Identifiable {
     }
     var subtitle: String {
         switch self {
-        case .appearance: return "选择边缘出现的时机，调整线条样式。"
-        case .styles: return "为扩展屏和通用控制，分别搭配喜欢的外观。"
+        case .appearance: return "选择边缘出现的时机。"
+        case .styles: return "调整线条粗细，为两类通道分别搭配颜色和透明度。"
         case .channels: return "查看屏幕排列与可以跨越的通道。"
         case .markers: return "为需要额外提示的位置补充标记。"
         case .general: return "设置锁屏行为与应用启动方式。"

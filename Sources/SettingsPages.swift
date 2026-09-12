@@ -71,29 +71,7 @@ struct AppearanceSettings: View {
                     .font(.system(size: 11)).foregroundStyle(PointerStateReader.isAvailable ? Color.secondary : .orange)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            SettingsCard(title: "线条样式") {
-                VStack(alignment: .leading, spacing: 16) {
-                    HStack {
-                        Text("线条粗细").font(.system(size: 13, weight: .medium))
-                        Spacer()
-                        Text("\(Int(model.preferences.thickness)) 点").font(.system(size: 12)).monospacedDigit().foregroundStyle(.secondary)
-                    }
-                    HStack(spacing: 12) {
-                        Text("细").font(.caption).foregroundStyle(.secondary)
-                        Slider(value: $model.preferences.thickness, in: 2...8, step: 1).accessibilityLabel("线条粗细")
-                        Text("粗").font(.caption).foregroundStyle(.secondary)
-                    }
-                    HStack(spacing: 14) {
-                        StyleStripSample(appearance: model.preferences.extendedAppearance).frame(height: model.preferences.thickness)
-                        StyleStripSample(appearance: model.preferences.universalAppearance).frame(height: model.preferences.thickness)
-                    }.frame(height: 12).accessibilityLabel("扩展屏与通用控制线条样式")
-                    HStack {
-                        Text("配色与透明度可在“颜色与材质”中调整").font(.system(size: 11)).foregroundStyle(.secondary)
-                        Spacer()
-                        Button("预览 4 秒") { model.onPreview?() }.disabled(model.screenLocked)
-                    }
-                }.padding(16)
-            }
+
         }
     }
 }
