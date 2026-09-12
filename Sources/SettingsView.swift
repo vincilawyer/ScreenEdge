@@ -87,6 +87,11 @@ struct SettingsView: View {
                         }
                     }
                     if let warning = model.configWarning { Text(warning).font(.caption).foregroundStyle(.orange) }
+                    VStack(alignment: .leading, spacing: 6) {
+                        Toggle("显示菜单栏图标", isOn: $model.preferences.showMenuBarIcon)
+                        Text("隐藏后边缘提示仍会运行；重新打开“跨屏边缘.app”即可进入设置并恢复图标。")
+                            .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    }
                     HStack(alignment: .top) {
                         Toggle("登录时启动", isOn: Binding(get: { model.loginEnabled }, set: { model.setLogin($0) }))
                         Spacer()
@@ -100,7 +105,7 @@ struct SettingsView: View {
                 Image(systemName: "cursorarrow").foregroundStyle(mint)
                 Text("提示线可穿透点击；键鼠共享由系统通用控制完成。")
                 Spacer()
-                Text("1.2.0").monospacedDigit()
+                Text("1.3.0").monospacedDigit()
             }.font(.caption).foregroundStyle(.secondary).padding(.horizontal, 24).padding(.vertical, 13)
         }
         .frame(minWidth: 660, idealWidth: 720, minHeight: 650)

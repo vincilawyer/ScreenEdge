@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import CoreServices
 
 @MainActor final class AppDelegate: NSObject, NSApplicationDelegate {
     let smokeTest = CommandLine.arguments.contains("--smoke-test") || CommandLine.arguments.contains("--uc-check")
@@ -44,7 +45,12 @@ import SwiftUI
         overlays.rebuild(model: model)
         updateMenu()
         let firstLaunch = !UserDefaults.standard.bool(forKey: "screenEdge.didLaunch")
-        if firstLaunch || CommandLine.arguments.contains("--settings") || smokeTest { showSettings() }
+        let event = NSAppleEventManager.shared().currentAppleEvent
+        let launchedAtLogin = event?.eventID == kAEOpenApplication &&
+            event?.paramDescriptor(forKeyword: keyAEPropData)?.enumCodeValue == keyAELaunchedAsLogInItem
+        // A manual cold launch must remain a settings entry point when the icon is hidden.
+        if firstLaunch || CommandLine.arguments.contains("--settings") || smokeTest ||
+            (!model.preferences.showMenuBarIcon && !launchedAtLogin) { showSettings() }
         if !smokeTest { UserDefaults.standard.set(true, forKey: "screenEdge.didLaunch") }
         if CommandLine.arguments.contains("--uc-check") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { self.runUCCheck() }
@@ -52,6 +58,7 @@ import SwiftUI
     }
 
     func updateMenu() {
+        status.isVisible = model.preferences.showMenuBarIcon
         let menu = NSMenu()
         let title = NSMenuItem(title: "跨屏边缘", action: nil, keyEquivalent: "")
         title.isEnabled = false; menu.addItem(title)
