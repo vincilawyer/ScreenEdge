@@ -23,7 +23,7 @@ The download is ad-hoc signed and **not notarized by Apple**. macOS may ask you 
 - The remote screen in the preview is a **schematic destination**, not measured remote geometry. Remote screen names, full dimensions, and two-device color correspondence have not been verified.
 - Another Mac needs its own copy of the app to draw its edges. This macOS app cannot run on an iPad.
 - Overlays pass clicks through and do not intercept, inject, or move input. The app requests no Accessibility, Input Monitoring, or Screen Recording permission and makes no network requests.
-- Lock screens, exclusive display modes, and special system surfaces may suppress overlays.
+- Optional post-login lock-screen overlays use a temporary SkyLight space, with a separate always-visible setting. Native simulated-transition checks pass, and the user confirmed that the edge indicator works on the actual lock screen of their Intel Mac running macOS 15.7.9. Boot login, FileVault, exclusive display modes and other special surfaces are outside its scope. See [lock-screen notes](docs/lock-screen.md).
 
 ## Build
 
@@ -37,7 +37,7 @@ cd ScreenEdge
 open "build/跨屏边缘.app"
 ```
 
-The default target is Apple Silicon. For an Intel build, use `SCREENEDGE_ARCH=x86_64 ./scripts/build.sh`. Intel hardware has not been tested.
+The default target is Apple Silicon. For an Intel build, use `SCREENEDGE_ARCH=x86_64 ./scripts/build.sh`. This branch's mirror compatibility fix has been tested on Intel with macOS 15.7.9; it is not included in the existing v1.3.0 release archive.
 
 With Python 3 available, run `./scripts/package.sh` to build a ZIP and SHA-256 checksum under `dist/`. Live overlay checks require a logged-in graphical macOS session:
 

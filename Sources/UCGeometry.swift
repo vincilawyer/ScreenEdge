@@ -25,7 +25,10 @@ struct UCEdgeValue: Equatable {
     }
 
     func portal(displays: [DisplayInfo]) -> Portal? {
-        guard let screen = displays.first(where: { $0.id.caseInsensitiveCompare(displayID) == .orderedSame }) else { return nil }
+        guard let screen = displays.first(where: {
+            $0.id.caseInsensitiveCompare(displayID) == .orderedSame ||
+                $0.mirroredDisplayIDs.contains { $0.caseInsensitiveCompare(displayID) == .orderedSame }
+        }) else { return nil }
         let f = screen.frame
         guard let quartz = screen.quartzFrame,
               abs(quartz.width - f.width) < 1.5, abs(quartz.height - f.height) < 1.5 else { return nil }

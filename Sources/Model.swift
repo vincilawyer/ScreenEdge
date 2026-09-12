@@ -10,6 +10,8 @@ import ServiceManagement
     @Published var configWarning: String?
     @Published var loginEnabled = false
     @Published var loginMessage: String?
+    @Published private(set) var screenLocked = false
+    @Published var lockScreenMessage: String?
     var onChange: (() -> Void)?
     var onPreview: (() -> Void)?
     private let defaults: UserDefaults?
@@ -49,18 +51,53 @@ import ServiceManagement
     }
     var automaticCount: Int { PortalGeometry.automatic(displays).count / 2 }
 
+    func setScreenLocked(_ locked: Bool) {
+        guard screenLocked != locked else { return }
+        screenLocked = locked
+        onChange?()
+        refreshDisplays()
+    }
+
     func refreshDisplays() {
+        updateDisplaySnapshot()
+        requestUniversalControl()
+    }
+
+    private func updateDisplaySnapshot() {
+        let previous = displays
+        var onlineCount: UInt32 = 0
+        var onlineDisplays: [CGDirectDisplayID] = []
+        if CGGetOnlineDisplayList(0, nil, &onlineCount) == .success, onlineCount <= 256 {
+            onlineDisplays = Array(repeating: kCGNullDirectDisplay, count: Int(onlineCount))
+            if CGGetOnlineDisplayList(onlineCount, &onlineDisplays, &onlineCount) != .success {
+                onlineDisplays = []
+            } else {
+                onlineDisplays = Array(onlineDisplays.prefix(Int(onlineCount)))
+            }
+        }
         displays = NSScreen.screens.compactMap { screen in
             guard let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else { return nil }
             let displayID = CGDirectDisplayID(number.uint32Value)
             guard CGDisplayMirrorsDisplay(displayID) == kCGNullDirectDisplay else { return nil }
             let uuid = CGDisplayCreateUUIDFromDisplayID(displayID)?.takeRetainedValue()
             let id = uuid.map { CFUUIDCreateString(nil, $0) as String } ?? "display-\(displayID)"
-            return DisplayInfo(id: id, name: screen.localizedName, frame: screen.frame, quartzFrame: CGDisplayBounds(displayID))
+            let quartz = CGDisplayBounds(displayID)
+            let mirroredIDs = onlineDisplays.compactMap { memberID -> String? in
+                // Use the live system relationship, never infer identity from equal dimensions.
+                guard memberID != displayID, CGDisplayMirrorsDisplay(memberID) == displayID else { return nil }
+                let memberFrame = CGDisplayBounds(memberID)
+                guard abs(memberFrame.minX - quartz.minX) < 1.5,
+                      abs(memberFrame.minY - quartz.minY) < 1.5,
+                      abs(memberFrame.width - quartz.width) < 1.5,
+                      abs(memberFrame.height - quartz.height) < 1.5,
+                      let memberUUID = CGDisplayCreateUUIDFromDisplayID(memberID)?.takeRetainedValue() else { return nil }
+                return CFUUIDCreateString(nil, memberUUID) as String
+            }
+            return DisplayInfo(id: id, name: screen.localizedName, frame: screen.frame,
+                               quartzFrame: quartz, mirroredDisplayIDs: mirroredIDs)
         }
         universalControlPortals = ucValues.compactMap { $0.portal(displays: displays) }
-        onChange?()
-        requestUniversalControl()
+        if previous != displays { onChange?() }
     }
 
     private func syncUniversalControl() {
@@ -89,6 +126,8 @@ import ServiceManagement
             Task { @MainActor in
                 guard let self, generation == self.ucGeneration else { return }
                 self.ucInFlight = false
+                // Mirror membership can change while NSScreen still describes the same desktop.
+                self.updateDisplaySnapshot()
                 self.applyUniversalControlResponse(dictionaries, error: error)
             }
         }

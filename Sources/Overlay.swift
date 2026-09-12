@@ -43,20 +43,42 @@ final class EdgeStripView: NSView {
     private var screenFrames: [CGRect] = []
     private var previewWindows: [EdgePanel] = []
     private var previewTask: DispatchWorkItem?
+    private var lockSpace: LockScreenSpace?
+    var usesLockScreenSpace: Bool { lockSpace != nil }
 
     func rebuild(model: AppModel) {
         previewTask?.cancel()
         previewWindows.forEach { $0.close() }; previewWindows.removeAll()
         timer?.invalidate(); timer = nil
         entries.forEach { $0.window.close() }; entries.removeAll()
+        lockSpace = nil
         guard model.preferences.enabled else { return }
-        nearOnly = model.preferences.nearOnly
+        guard !model.screenLocked || model.preferences.showWhenLocked else { return }
+        nearOnly = model.preferences.nearOnly && !(model.screenLocked && model.preferences.alwaysShowWhenLocked)
         screenFrames = model.displays.map(\.frame)
+        if model.screenLocked && !model.portals.isEmpty {
+            guard let space = LockScreenSpace() else {
+                model.lockScreenMessage = "当前系统暂时无法在锁屏上显示提示线。"
+                return
+            }
+            lockSpace = space
+        }
         for portal in model.portals {
             guard let screen = model.displays.first(where: { $0.id == portal.displayID }) else { continue }
             let rect = portal.rect(on: screen, thickness: model.preferences.thickness).integral
             guard rect.width > 0 && rect.height > 0 else { continue }
             let panel = makePanel(frame: rect, manual: portal.usesWarmPalette, vertical: portal.edge.vertical)
+            if model.screenLocked {
+                panel.canBecomeVisibleWithoutLogin = true
+                guard lockSpace?.attach(panel) == true else {
+                    panel.close()
+                    entries.forEach { $0.window.close() }; entries.removeAll()
+                    lockSpace = nil
+                    model.lockScreenMessage = "当前系统暂时无法在锁屏上显示提示线。"
+                    return
+                }
+                model.lockScreenMessage = nil
+            }
             panel.alphaValue = nearOnly ? 0 : 1.0
             panel.orderFrontRegardless()
             entries.append(Entry(window: panel, portal: portal, frame: rect))
@@ -92,7 +114,7 @@ final class EdgeStripView: NSView {
 
     func updateProximity(at mouse: CGPoint = NSEvent.mouseLocation) {
         // Any screen edge reveals all passages, including when the nearby edge has no passage.
-        let revealAll = screenFrames.contains { f in
+        let revealAll = !nearOnly || screenFrames.contains { f in
             let edges = [CGRect(x: f.minX, y: f.minY, width: f.width, height: 0),
                          CGRect(x: f.minX, y: f.maxY, width: f.width, height: 0),
                          CGRect(x: f.minX, y: f.minY, width: 0, height: f.height),
@@ -106,6 +128,7 @@ final class EdgeStripView: NSView {
     }
 
     func preview(model: AppModel) {
+        guard !model.screenLocked else { return }
         previewTask?.cancel()
         previewWindows.forEach { $0.close() }; previewWindows.removeAll()
         for screen in model.displays {
@@ -121,5 +144,13 @@ final class EdgeStripView: NSView {
         }
         previewTask = task
         DispatchQueue.main.asyncAfter(deadline: .now() + 4, execute: task)
+    }
+
+    func stop() {
+        timer?.invalidate(); timer = nil
+        previewTask?.cancel(); previewTask = nil
+        previewWindows.forEach { $0.close() }; previewWindows.removeAll()
+        entries.forEach { $0.window.close() }; entries.removeAll()
+        lockSpace = nil
     }
 }

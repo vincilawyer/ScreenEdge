@@ -8,6 +8,7 @@ import CoreServices
     let overlays = OverlayController()
     var status: NSStatusItem!
     var window: NSWindow?
+    var lockMonitor: ScreenLockMonitor?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -44,6 +45,11 @@ import CoreServices
         }
         overlays.rebuild(model: model)
         updateMenu()
+        if !smokeTest {
+            lockMonitor = ScreenLockMonitor { [weak self] locked in
+                self?.model.setScreenLocked(locked)
+            }
+        }
         let firstLaunch = !UserDefaults.standard.bool(forKey: "screenEdge.didLaunch")
         let event = NSAppleEventManager.shared().currentAppleEvent
         let launchedAtLogin = event?.eventID == kAEOpenApplication &&
@@ -110,7 +116,10 @@ import CoreServices
         window?.makeKeyAndOrderFront(nil)
     }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { showSettings(); return true }
-    func applicationWillTerminate(_ notification: Notification) { }
+    func applicationWillTerminate(_ notification: Notification) {
+        lockMonitor?.stop()
+        overlays.stop()
+    }
 
     func runUCCheck() {
         SEReadUniversalControlEdges { [weak self] dictionaries, error in
@@ -118,6 +127,10 @@ import CoreServices
                 guard let self else { return }
                 if let error { fputs("FAIL: \(error)\n", stderr); exit(1) }
                 let raw = dictionaries ?? []
+                guard !raw.isEmpty else {
+                    fputs("INCONCLUSIVE: the system returned no active UC edges; actual UC rendering was not tested\n", stderr)
+                    exit(2)
+                }
                 let values = raw.compactMap { UCEdgeValue(dictionary: $0 as? [String: Any] ?? [:]) }
                 let portals = values.compactMap { $0.portal(displays: self.model.displays) }
                 guard portals.count == raw.count else { fputs("FAIL: some active edge coordinates could not be mapped\n", stderr); exit(1) }
@@ -217,6 +230,24 @@ import CoreServices
         precondition(overlays.entries.allSatisfy { $0.window.alphaValue == 1 }, "a screen edge without a passage also reveals all passages")
         overlays.updateProximity(at: CGPoint(x: screen.frame.midX, y: screen.frame.midY))
         precondition(overlays.entries.allSatisfy { $0.window.alphaValue == 0 }, "moving into screen center hides all passages together")
+        model.setScreenLocked(true)
+        guard overlays.usesLockScreenSpace else {
+            fputs("FAIL: could not create or attach the lock-screen overlay space\n", stderr); exit(1)
+        }
+        precondition(overlays.entries.count == 2)
+        precondition(overlays.entries.allSatisfy { $0.window.canBecomeVisibleWithoutLogin && $0.window.ignoresMouseEvents && !$0.window.canBecomeKey })
+        precondition(window?.canBecomeVisibleWithoutLogin == false, "settings window stays off the lock screen")
+        overlays.updateProximity(at: CGPoint(x: screen.frame.midX, y: screen.frame.midY))
+        precondition(overlays.entries.allSatisfy { $0.window.alphaValue == 1 }, "lock-screen always-visible setting overrides desktop proximity")
+        model.preferences.alwaysShowWhenLocked = false
+        overlays.updateProximity(at: CGPoint(x: screen.frame.midX, y: screen.frame.midY))
+        precondition(overlays.entries.allSatisfy { $0.window.alphaValue == 0 }, "lock-screen proximity option is honored")
+        model.preferences.showWhenLocked = false
+        precondition(overlays.entries.isEmpty && !overlays.usesLockScreenSpace, "disabled lock overlays release their space")
+        model.setScreenLocked(false)
+        precondition(overlays.entries.count == 2 && !overlays.usesLockScreenSpace)
+        precondition(overlays.entries.allSatisfy { !$0.window.canBecomeVisibleWithoutLogin }, "unlock restores ordinary desktop panels")
+        print("PASS: temporary lock overlay space, edge-only membership, visibility options and teardown; simulated transition only, actual screen lock still requires validation")
         model.preferences.markers = []
         precondition(overlays.entries.isEmpty)
         print("PASS: overlay bounds, click-through, nonactivation, Spaces, switches, edits, deletion; near any screen edge reveals all passages, screen center hides all; \(model.displays.count) local screen(s)")

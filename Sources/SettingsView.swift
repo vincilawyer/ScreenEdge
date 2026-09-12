@@ -53,6 +53,18 @@ struct SettingsView: View {
                         }
                         Toggle("靠近任意屏幕边缘时显示全部通道", isOn: $model.preferences.nearOnly)
                             .help("靠近任意屏幕的任意边缘约 110 点时，全部提示线一起显示；离开所有边缘后一起隐藏。")
+                        VStack(alignment: .leading, spacing: 6) {
+                            Toggle("锁屏时显示边缘", isOn: $model.preferences.showWhenLocked)
+                            if model.preferences.showWhenLocked {
+                                Toggle("锁屏时保持常显", isOn: $model.preferences.alwaysShowWhenLocked)
+                                    .padding(.leading, 20)
+                            }
+                            Text("适用于登录后锁屏；重启后的首次登录界面不显示。通用控制断开时，其自动提示会清除。")
+                                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                            if let message = model.lockScreenMessage {
+                                Text(message).font(.caption).foregroundStyle(.orange)
+                            }
+                        }
                         HStack {
                             Text("线条粗细").frame(width: 76, alignment: .leading)
                             Slider(value: $model.preferences.thickness, in: 2...8, step: 1)
