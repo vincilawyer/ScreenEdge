@@ -48,7 +48,7 @@ lipo -archs "build/跨屏边缘.app/Contents/MacOS/ScreenEdge"
 codesign --verify --strict "build/跨屏边缘.app"
 ```
 
-构建前确认最新 `main` 中存在 `Sources/PointerState.swift`、`Sources/OverlayVisibility.swift`、`Sources/EdgeAppearance.swift`、`Sources/StyleSettings.swift` 和设置中的三种模式及“边缘样式”页。已有仓库时先检查 `git status`，再切换并快进更新 `main`；不覆盖未提交修改，需改代码时另建任务分支和 worktree。合并完成后清理临时分支，提交历史与 PR 仍可追溯。
+构建前确认最新 `main` 中存在 `Sources/PointerState.swift`、`Sources/OverlayVisibility.swift`、`Sources/EdgeAppearance.swift`、`Sources/StyleSettings.swift` 和设置中的三种模式及“边缘样式”页。已有仓库时先检查 `git status`，再切换并快进更新 `main`；不覆盖未提交修改。需要改代码时默认直接在 `main` 上修改、检查并提交，只有用户明确要求在分支上进行时才创建任务分支或配套 worktree。
 
 正常结果：138 项检查通过、应用包含 arm64、签名验证成功，Info.plist 显示 1.5.0 / 7。输出为 `build/跨屏边缘.app`。如需本地 ZIP，可执行 `SCREENEDGE_ARCH=arm64 ./scripts/package.sh`；上传 Release 是单独的发布工作，不要自动替换现有 v1.3.0 附件。
 
@@ -111,4 +111,4 @@ codesign --verify --strict "build/跨屏边缘.app"
 | `Sources/ScreenLock.swift` | 锁屏状态和应用专用临时覆盖层 |
 | `Tests/GeometryTests.swift` | 无真实设备标识的逻辑与配置检查 |
 
-只改本次问题相关代码；中文提交。先本机验证，再提交到任务分支供审查。已经合并的临时修复分支可以删除，提交历史仍由 `main` 和 PR 记录保留。
+只改本次问题相关代码；中文提交。默认先本机验证，再直接提交到 `main`，通过提交记录追溯和回退，不默认创建分支或 PR。只有用户明确要求使用分支时才另建任务分支；经授权合并完成后清理该临时分支，提交历史与 PR 仍可追溯。
