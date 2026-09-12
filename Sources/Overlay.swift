@@ -54,7 +54,7 @@ final class EdgeStripView: NSView {
             guard let screen = model.displays.first(where: { $0.id == portal.displayID }) else { continue }
             let rect = portal.rect(on: screen, thickness: model.preferences.thickness).integral
             guard rect.width > 0 && rect.height > 0 else { continue }
-            let panel = makePanel(frame: rect, manual: portal.manual, vertical: portal.edge.vertical)
+            let panel = makePanel(frame: rect, manual: portal.usesWarmPalette, vertical: portal.edge.vertical)
             panel.alphaValue = nearOnly ? 0 : 1.0
             panel.orderFrontRegardless()
             entries.append(Entry(window: panel, portal: portal, frame: rect))

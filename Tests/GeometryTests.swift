@@ -70,6 +70,56 @@ import CoreGraphics
         expect(PortalGeometry.distance(CGPoint(x: 14, y: 100), to: f) == 0, "on edge distance")
         expect(PortalGeometry.distance(CGPoint(x: 114, y: 100), to: f) == 100, "proximity perpendicular distance")
         expect(PortalGeometry.distance(CGPoint(x: 14, y: 620), to: f) == 100, "proximity beyond segment ends")
+
+        // Synthetic identifiers only: never commit a user's actual display/device IDs.
+        let ucScreen = DisplayInfo(id: "UC-SCREEN", name: "Synthetic", frame: CGRect(x: -1200, y: 200, width: 1200, height: 800),
+                                   quartzFrame: CGRect(x: -1200, y: -100, width: 1200, height: 800))
+        func ucData(_ edge: String = "top", _ rect: [Double] = [300, 0, 900, 1]) -> [String: Any] {
+            ["id": ["display": "uc-screen", "device": "synthetic"], "edge": edge, "rect": rect]
+        }
+        func uc(_ edge: String, _ rect: [Double]) -> Portal? {
+            let global = [rect[0] - 1200, rect[1] - 100, rect[2], rect[3]]
+            return UCEdgeValue(dictionary: ucData(edge, global))?.portal(displays: [ucScreen])
+        }
+        let ucTop = uc("top", [300, 0, 900, 1])!
+        expect(ucTop.start == -900 && ucTop.end == 0, "UC global coordinates convert through display-local space, including nonzero origin")
+        expect(ucTop.rect(on: ucScreen, thickness: 3) == CGRect(x: -900, y: 997, width: 900, height: 3), "UC top strip lies at actual AppKit screen edge")
+        expect(ucTop.universalControl && !ucTop.manual && ucTop.usesWarmPalette, "UC is automatic and uses warm palette")
+        let ucLeft = uc("left", [0, 100, 1, 500])!
+        expect(ucLeft.start == 400 && ucLeft.end == 900, "UC vertical range flips top-left coordinates to AppKit")
+        expect(ucLeft.rect(on: ucScreen, thickness: 4) == CGRect(x: -1200, y: 400, width: 4, height: 500), "UC left strip on translated screen")
+        expect(uc("right", [1199, 100, 1, 500])?.start == 400, "UC right edge")
+        expect(uc("bottom", [100, 799, 700, 1])?.start == -1100, "UC bottom edge")
+        expect(uc("top", [-50, 0, 1400, 1])?.start == -1200 && uc("top", [-50, 0, 1400, 1])?.end == 0, "UC clips range to owning screen")
+        expect(uc("top", [1300, 0, 50, 1]) == nil, "UC entirely outside screen rejected")
+        expect(uc("top", [300, 50, 100, 1]) == nil, "UC incompatible edge offset rejected")
+        expect(uc("right", [400, 0, 1, 100]) == nil, "UC wrong right boundary rejected")
+        expect(uc("left", [0, 0, 80, 100]) == nil, "UC malformed edge thickness rejected")
+        expect(UCEdgeValue(dictionary: ucData())?.portal(displays: [main]) == nil, "UC unknown screen cannot move marker onto another screen")
+        expect(UCEdgeValue(dictionary: ucData("diagonal")) == nil, "UC unsupported edge rejected")
+        expect(UCEdgeValue(dictionary: ucData("top", [1, 2, 3])) == nil, "UC malformed coordinate count rejected")
+        expect(UCEdgeValue(dictionary: ucData("top", [0, 0, 0, 1])) == nil, "UC zero length rejected")
+        expect(UCEdgeValue(dictionary: ucData("top", [0, 0, -1, 1])) == nil, "UC negative length rejected")
+        expect(UCEdgeValue(dictionary: ucData("top", [.nan, 0, 100, 1])) == nil, "UC NaN rejected")
+        expect(UCEdgeValue(dictionary: ucData("top", [0, 0, .infinity, 1])) == nil, "UC infinity rejected")
+        expect(UCEdgeValue(dictionary: [:]) == nil, "UC missing data rejected")
+        expect(ucLeft.gradientFraction(at: CGPoint(x: -1200, y: 900)) == 0, "UC vertical palette begins at top")
+        expect(ucTop.gradientFraction(at: CGPoint(x: -450, y: 1000)) == 0.5, "UC horizontal palette midpoint")
+        var ucWithoutQuartz = ucScreen; ucWithoutQuartz.quartzFrame = nil
+        expect(UCEdgeValue(dictionary: ucData())?.portal(displays: [ucWithoutQuartz]) == nil, "UC without known Quartz origin is rejected")
+        let ucAbove = DisplayInfo(id: "UC-SCREEN", name: "Synthetic above", frame: CGRect(x: 100, y: 900, width: 1600, height: 900),
+                                  quartzFrame: CGRect(x: 100, y: -900, width: 1600, height: 900))
+        let abovePortal = UCEdgeValue(dictionary: ucData("top", [760, -900, 940, 1]))?.portal(displays: [ucAbove])
+        expect(abovePortal?.rect(on: ucAbove, thickness: 3) == CGRect(x: 760, y: 1797, width: 940, height: 3), "UC above external display regression: negative global y and shifted x")
+
+        let legacy: [String: Any] = ["enabled": false, "automatic": false, "nearOnly": true, "thickness": 3,
+                                     "markers": [try JSONSerialization.jsonObject(with: data)]]
+        let migrated = try JSONDecoder().decode(Preferences.self, from: JSONSerialization.data(withJSONObject: legacy))
+        expect(!migrated.enabled && !migrated.automatic && migrated.nearOnly && migrated.thickness == 3, "v1 upgrade preserves existing switches and thickness")
+        expect(migrated.automaticUniversalControl && migrated.markers == [marker], "v1 upgrade enables UC without losing manual markers")
+        var saved = migrated; saved.automaticUniversalControl = false
+        expect(try JSONDecoder().decode(Preferences.self, from: JSONEncoder().encode(saved)).automaticUniversalControl == false, "UC disabled preference persists")
+        expect(try JSONDecoder().decode(Preferences.self, from: Data("{}".utf8)).automaticUniversalControl, "new preferences enable automatic UC")
         print("PASS: \(checks) geometry and configuration checks")
     }
 }

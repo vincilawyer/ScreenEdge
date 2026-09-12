@@ -17,7 +17,7 @@ struct SettingsView: View {
                     .frame(width: 54, height: 54).background(mint.opacity(0.10), in: RoundedRectangle(cornerRadius: 14))
                 VStack(alignment: .leading, spacing: 5) {
                     Text("跨屏边缘").font(.system(size: 23, weight: .semibold))
-                    Text("沿着同一种颜色，找到屏幕另一端。").font(.system(size: 12)).foregroundStyle(.secondary)
+                    Text("沿着渐变，找到跨屏的通道。").font(.system(size: 12)).foregroundStyle(.secondary)
                 }
                 Spacer()
                 Toggle("显示边缘", isOn: $model.preferences.enabled).toggleStyle(.switch)
@@ -30,7 +30,7 @@ struct SettingsView: View {
                         HStack {
                             Text("屏幕与通道").font(.headline)
                             Spacer()
-                            Text("\(model.displays.count) 块本机屏幕 · \(model.automaticCount) 处交界")
+                            Text("\(model.displays.count) 块本机屏幕 · \(model.automaticCount) 处交界 · \(model.universalControlPortals.count) 段通用控制")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                         DisplayMap(displays: model.displays, portals: model.portals)
@@ -38,14 +38,19 @@ struct SettingsView: View {
                             .background(Color.primary.opacity(0.025), in: RoundedRectangle(cornerRadius: 12))
                         HStack(spacing: 18) {
                             Label { Text("彩虹渐变 · 扩展屏通道") } icon: { Capsule().fill(passageGradient(manual: false)).frame(width: 28, height: 5) }
-                            Label { Text("暖色渐变 · 通用控制标记") } icon: { Capsule().fill(passageGradient(manual: true)).frame(width: 28, height: 5) }
+                            Label { Text("暖色渐变 · 通用控制通道") } icon: { Capsule().fill(passageGradient(manual: true)).frame(width: 28, height: 5) }
                             Spacer()
                         }.font(.caption).foregroundStyle(.secondary)
                     }
-                    Text("同色位置相互对应：左右相邻屏幕从上往下渐变，上下相邻屏幕从左往右渐变。")
+                    Text("扩展屏同色位置相互对应；通用控制按本机通道范围渐变标记。另一台 Mac 也需运行本应用才能显示对端提示。")
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     VStack(alignment: .leading, spacing: 14) {
                         Toggle("自动标记扩展屏交界", isOn: $model.preferences.automatic)
+                        VStack(alignment: .leading, spacing: 5) {
+                            Toggle("自动标记通用控制通道", isOn: $model.preferences.automaticUniversalControl)
+                            Text(model.universalControlStatus).font(.caption).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                         Toggle("仅在鼠标靠近边缘时显示", isOn: $model.preferences.nearOnly)
                             .help("距离通道约 110 点以内时显示。常显模式不需要轮询鼠标。")
                         HStack {
@@ -58,19 +63,19 @@ struct SettingsView: View {
                     }.padding(16).background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 12))
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {
-                            Text("通用控制标记").font(.headline)
+                            Text("手动补充标记").font(.headline)
                             Spacer()
                             Button { model.addMarker() } label: { Label("添加标记", systemImage: "plus") }
                                 .disabled(model.displays.isEmpty)
                         }
-                        Text("按系统“显示器 → 排列”中的通道位置标记。设置会自动保存；远端设备断开后，可关闭对应标记。")
+                        Text("自动识别后无需添加。若需要额外提示，可按系统排列手动标记；手动标记需自行开关。")
                             .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                         if model.preferences.markers.isEmpty {
                             HStack(spacing: 12) {
                                 Image(systemName: "laptopcomputer.and.ipad").font(.title2).foregroundStyle(.secondary)
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text("继续使用苹果通用控制").font(.system(size: 13, weight: .medium))
-                                    Text("添加一段边缘提示，位置和长度都能调整。")
+                                    Text("当前没有手动标记").font(.system(size: 13, weight: .medium))
+                                    Text("已连接的通用控制通道会自动显示。")
                                         .font(.caption).foregroundStyle(.secondary)
                                 }
                                 Spacer()
@@ -95,7 +100,7 @@ struct SettingsView: View {
                 Image(systemName: "cursorarrow").foregroundStyle(mint)
                 Text("提示线可穿透点击；键鼠共享由系统通用控制完成。")
                 Spacer()
-                Text("1.0.0").monospacedDigit()
+                Text("1.1.0").monospacedDigit()
             }.font(.caption).foregroundStyle(.secondary).padding(.horizontal, 24).padding(.vertical, 13)
         }
         .frame(minWidth: 660, idealWidth: 720, minHeight: 650)
@@ -164,7 +169,7 @@ struct DisplayMap: View {
                     ForEach(portals) { portal in
                         if let display = displays.first(where: { $0.id == portal.displayID }) {
                             let rect = portal.rect(on: display, thickness: 3 / scale)
-                            RoundedRectangle(cornerRadius: 2).fill(passageGradient(manual: portal.manual, vertical: portal.edge.vertical))
+                            RoundedRectangle(cornerRadius: 2).fill(passageGradient(manual: portal.usesWarmPalette, vertical: portal.edge.vertical))
                                 .frame(width: max(3, rect.width * scale), height: max(3, rect.height * scale))
                                 .position(x: origin.x + (rect.midX - union.minX) * scale,
                                           y: origin.y + (union.maxY - rect.midY) * scale)

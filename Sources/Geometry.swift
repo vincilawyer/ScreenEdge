@@ -5,6 +5,7 @@ struct DisplayInfo: Identifiable, Equatable {
     let id: String
     let name: String
     let frame: CGRect // AppKit coordinates: origin at bottom left
+    var quartzFrame: CGRect? = nil // CoreGraphics global coordinates, y increases downward
 }
 
 enum Edge: String, Codable, CaseIterable, Identifiable {
@@ -34,6 +35,8 @@ struct Portal: Identifiable, Equatable {
     let end: CGFloat
     let label: String
     let manual: Bool
+    var universalControl: Bool = false
+    var usesWarmPalette: Bool { manual || universalControl }
 
     /// Each reciprocal automatic portal has the same start/end interval.
     /// Horizontal edges read left-to-right; vertical edges read top-to-bottom.

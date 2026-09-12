@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 @MainActor final class AppDelegate: NSObject, NSApplicationDelegate {
-    let smokeTest = CommandLine.arguments.contains("--smoke-test")
+    let smokeTest = CommandLine.arguments.contains("--smoke-test") || CommandLine.arguments.contains("--uc-check")
     lazy var model = AppModel(ephemeral: smokeTest)
     let overlays = OverlayController()
     var status: NSStatusItem!
@@ -46,7 +46,9 @@ import SwiftUI
         let firstLaunch = !UserDefaults.standard.bool(forKey: "screenEdge.didLaunch")
         if firstLaunch || CommandLine.arguments.contains("--settings") || smokeTest { showSettings() }
         if !smokeTest { UserDefaults.standard.set(true, forKey: "screenEdge.didLaunch") }
-        if smokeTest { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { self.runSmokeTest() } }
+        if CommandLine.arguments.contains("--uc-check") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { self.runUCCheck() }
+        } else if smokeTest { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { self.runSmokeTest() } }
     }
 
     func updateMenu() {
@@ -57,6 +59,8 @@ import SwiftUI
         toggle.target = self; toggle.state = model.preferences.enabled ? .on : .off; menu.addItem(toggle)
         let near = NSMenuItem(title: "仅靠近时显示", action: #selector(toggleNear), keyEquivalent: "")
         near.target = self; near.state = model.preferences.nearOnly ? .on : .off; menu.addItem(near)
+        let uc = NSMenuItem(title: "自动识别通用控制", action: #selector(toggleUC), keyEquivalent: "")
+        uc.target = self; uc.state = model.preferences.automaticUniversalControl ? .on : .off; menu.addItem(uc)
         menu.addItem(.separator())
         for marker in model.preferences.markers {
             let item = NSMenuItem(title: "\(marker.edge.title) · \(marker.label)", action: #selector(toggleMarker(_:)), keyEquivalent: "")
@@ -74,6 +78,7 @@ import SwiftUI
         status.menu = menu
     }
     @objc func toggleEnabled() { model.preferences.enabled.toggle() }
+    @objc func toggleUC() { model.preferences.automaticUniversalControl.toggle() }
     @objc func toggleNear() { model.preferences.nearOnly.toggle() }
     @objc func toggleMarker(_ item: NSMenuItem) {
         guard let id = item.representedObject as? String,
@@ -100,6 +105,41 @@ import SwiftUI
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { showSettings(); return true }
     func applicationWillTerminate(_ notification: Notification) { }
 
+    func runUCCheck() {
+        SEReadUniversalControlEdges { [weak self] dictionaries, error in
+            Task { @MainActor in
+                guard let self else { return }
+                if let error { fputs("FAIL: \(error)\n", stderr); exit(1) }
+                let raw = dictionaries ?? []
+                let values = raw.compactMap { UCEdgeValue(dictionary: $0 as? [String: Any] ?? [:]) }
+                let portals = values.compactMap { $0.portal(displays: self.model.displays) }
+                guard portals.count == raw.count else { fputs("FAIL: some active edge coordinates could not be mapped\n", stderr); exit(1) }
+                self.model.applyUniversalControlResponse(dictionaries, error: nil)
+                let entries = self.overlays.entries.filter { $0.portal.universalControl }
+                precondition(entries.count == portals.count)
+                for entry in entries {
+                    precondition(entry.window.frame == entry.frame)
+                    precondition(entry.window.ignoresMouseEvents && !entry.window.canBecomeKey)
+                    precondition((entry.window.contentView as? EdgeStripView)?.manual == true)
+                    precondition(entry.window.isVisible && entry.window.alphaValue == 1)
+                }
+                self.model.applyUniversalControlResponse([], error: nil)
+                precondition(self.overlays.entries.allSatisfy { !$0.portal.universalControl })
+                self.model.applyUniversalControlResponse(dictionaries, error: nil)
+                self.model.applyUniversalControlResponse(nil, error: "simulated read failure")
+                precondition(self.overlays.entries.allSatisfy { !$0.portal.universalControl })
+                self.model.applyUniversalControlResponse(dictionaries, error: nil)
+                self.model.preferences.automaticUniversalControl = false
+                precondition(self.overlays.entries.allSatisfy { !$0.portal.universalControl })
+                print("PASS: read-only Universal Control query, \(raw.count) active edge(s), mapped and rendered as click-through warm gradients; empty/error/disable responses remove UC overlays")
+                for portal in portals {
+                    print("edge=\(portal.edge.rawValue) start=\(portal.start) end=\(portal.end) warmGradient=\(portal.usesWarmPalette)")
+                }
+                NSApp.terminate(nil)
+            }
+        }
+    }
+
     func runSmokeTest() {
         guard let screen = model.displays.first else { fputs("FAIL: no display\n", stderr); exit(1) }
         let realPortals = PortalGeometry.automatic(model.displays)
@@ -115,30 +155,32 @@ import SwiftUI
             }
         }
         // Render the same strip at two physical lengths, representing displays with different scales.
-        func render(_ size: NSSize, vertical: Bool) -> NSBitmapImageRep {
-            let view = EdgeStripView(frame: CGRect(origin: .zero, size: size), manual: false, vertical: vertical)
+        func render(_ size: NSSize, vertical: Bool, warm: Bool) -> NSBitmapImageRep {
+            let view = EdgeStripView(frame: CGRect(origin: .zero, size: size), manual: warm, vertical: vertical)
             let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds)!
             view.cacheDisplay(in: view.bounds, to: rep)
             return rep
         }
-        for vertical in [false, true] {
-            let a = render(vertical ? NSSize(width: 8, height: 400) : NSSize(width: 400, height: 8), vertical: vertical)
-            let b = render(vertical ? NSSize(width: 8, height: 800) : NSSize(width: 800, height: 8), vertical: vertical)
-            for fraction: CGFloat in [0.05, 0.25, 0.5, 0.75, 0.95] {
-                func color(_ image: NSBitmapImageRep) -> NSColor {
-                    let x = vertical ? image.pixelsWide / 2 : Int(CGFloat(image.pixelsWide) * fraction)
-                    let y = vertical ? Int(CGFloat(image.pixelsHigh) * fraction) : image.pixelsHigh / 2
-                    return image.colorAt(x: x, y: y)!.usingColorSpace(.deviceRGB)!
+        for warm in [false, true] {
+            for vertical in [false, true] {
+                let a = render(vertical ? NSSize(width: 8, height: 400) : NSSize(width: 400, height: 8), vertical: vertical, warm: warm)
+                let b = render(vertical ? NSSize(width: 8, height: 800) : NSSize(width: 800, height: 8), vertical: vertical, warm: warm)
+                for fraction: CGFloat in [0.05, 0.25, 0.5, 0.75, 0.95] {
+                    func color(_ image: NSBitmapImageRep) -> NSColor {
+                        let x = vertical ? image.pixelsWide / 2 : Int(CGFloat(image.pixelsWide) * fraction)
+                        let y = vertical ? Int(CGFloat(image.pixelsHigh) * fraction) : image.pixelsHigh / 2
+                        return image.colorAt(x: x, y: y)!.usingColorSpace(.deviceRGB)!
+                    }
+                    let ca = color(a), cb = color(b)
+                    precondition(abs(ca.redComponent - cb.redComponent) < 0.04 && abs(ca.greenComponent - cb.greenComponent) < 0.04 && abs(ca.blueComponent - cb.blueComponent) < 0.04)
+                    precondition(ca.alphaComponent > 0.9 && cb.alphaComponent > 0.9)
                 }
-                let ca = color(a), cb = color(b)
-                precondition(abs(ca.redComponent - cb.redComponent) < 0.04 && abs(ca.greenComponent - cb.greenComponent) < 0.04 && abs(ca.blueComponent - cb.blueComponent) < 0.04)
-                precondition(ca.alphaComponent > 0.9 && cb.alphaComponent > 0.9)
+                let start = a.colorAt(x: vertical ? a.pixelsWide / 2 : 12, y: vertical ? 12 : a.pixelsHigh / 2)!.usingColorSpace(.deviceRGB)!
+                let end = a.colorAt(x: vertical ? a.pixelsWide / 2 : a.pixelsWide - 12, y: vertical ? a.pixelsHigh - 12 : a.pixelsHigh / 2)!.usingColorSpace(.deviceRGB)!
+                precondition(abs(start.greenComponent - end.greenComponent) + abs(start.blueComponent - end.blueComponent) > 0.2)
             }
-            let start = a.colorAt(x: vertical ? a.pixelsWide / 2 : 12, y: vertical ? 12 : a.pixelsHigh / 2)!.usingColorSpace(.deviceRGB)!
-            let end = a.colorAt(x: vertical ? a.pixelsWide / 2 : a.pixelsWide - 12, y: vertical ? a.pixelsHigh - 12 : a.pixelsHigh / 2)!.usingColorSpace(.deviceRGB)!
-            precondition(abs(start.greenComponent - end.greenComponent) + abs(start.blueComponent - end.blueComponent) > 0.2)
         }
-        print("PASS: actual display geometry has \(realPortals.count / 2) passage(s), \(matchedSamples) corresponding gradient samples; rendered gradients match across 400/800-point lengths in both orientations")
+        print("PASS: actual display geometry has \(realPortals.count / 2) passage(s), \(matchedSamples) corresponding gradient samples; both gradient palettes match across 400/800-point lengths in both orientations")
         model.preferences.automatic = false
         model.preferences.nearOnly = false
         model.preferences.markers = [ManualMarker(displayID: screen.id, label: "测试标记")]
