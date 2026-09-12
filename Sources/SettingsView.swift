@@ -79,7 +79,6 @@ struct SettingsView: View {
         }
         .frame(minWidth: 760, idealWidth: 820, minHeight: 610)
         .background(Color(nsColor: .windowBackgroundColor))
-        .tint(mint)
     }
 
     private var header: some View {
